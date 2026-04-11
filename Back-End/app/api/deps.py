@@ -37,3 +37,23 @@ def get_current_user(
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     return user
+
+
+def get_current_user_optional(
+    creds: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
+    db: Session = Depends(get_db),
+) -> User | None:
+    """Bearer JWT if present and valid; otherwise None (anonymous / session-only flows)."""
+    if creds is None or creds.scheme.lower() != "bearer":
+        return None
+    try:
+        payload = decode_access_token(creds.credentials)
+        sub = payload.get("sub")
+        if sub is None:
+            return None
+        uid = int(sub)
+    except (jwt.ExpiredSignatureError, jwt.PyJWTError, ValueError, TypeError):
+        return None
+
+    user = db.get(User, uid)
+    return user

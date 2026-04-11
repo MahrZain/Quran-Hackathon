@@ -1,46 +1,88 @@
 import { Lightbulb, Link2, Moon } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Card } from '../components/ui/Card'
+import { useMoodAyah } from '../context/MoodAyahContext'
+import { useAppSession } from '../hooks/useAppSession'
+import { apiClient } from '../lib/apiClient'
+import type { HistoryMessage } from '../lib/apiTypes'
+import { buildInsightCards, type InsightCardModel } from '../lib/deriveInsights'
 
-const items = [
-  {
-    title: 'Thematic echo',
-    body: 'Your recent reading clusters around rizq, sabr, and gratitude—consider journaling one line per theme.',
-    icon: Link2,
-  },
-  {
-    title: 'Night rhythm',
-    body: 'You open ASAR most after Maghrib. A shorter “focus” preset could match that energy.',
-    icon: Moon,
-  },
-  {
-    title: 'Gentle prompt',
-    body: "Try pairing Yā Sīn with a single du'a intention for the week—keep the mentor questions narrow.",
-    icon: Lightbulb,
-  },
-] as const
+function iconFor(kind: InsightCardModel['kind']) {
+  if (kind === 'themes') return Link2
+  if (kind === 'rhythm') return Moon
+  return Lightbulb
+}
 
 export function InsightsPage() {
+  const { pathname } = useLocation()
+  const { sessionId } = useAppSession()
+  const { streakCount, displayAyah } = useMoodAyah()
+  const [userTexts, setUserTexts] = useState<string[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    void apiClient
+      .get<HistoryMessage[]>(`/history/${sessionId}`)
+      .then(({ data }) => {
+        if (cancelled) return
+        const texts = data.filter((m) => m.role === 'user').map((m) => m.content.trim()).filter(Boolean)
+        setUserTexts(texts)
+      })
+      .catch(() => {
+        if (!cancelled) setUserTexts([])
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [sessionId, pathname])
+
+  const cards = useMemo(
+    () =>
+      buildInsightCards({
+        userMessages: userTexts,
+        streakCount,
+        heartCheckIns: userTexts.length,
+        currentSurahName: displayAyah.surahName,
+        currentVerseKey: `${displayAyah.surahId}:${displayAyah.ayahNumber}`,
+      }),
+    [userTexts, streakCount, displayAyah.surahName, displayAyah.surahId, displayAyah.ayahNumber],
+  )
+
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-3xl px-4">
       <header className="mb-8">
         <h1 className="font-serif text-3xl font-semibold text-primary">AI insight results</h1>
         <p className="mt-2 text-sm text-on-surface/70">
-          Cards mirror the desktop “Nature Distilled” insight layout—replace copy with real analysis.
+          Three lenses built from your session: mood messages, streak, and the āyah currently highlighted on the
+          dashboard.
         </p>
       </header>
-      <div className="flex flex-col gap-4">
-        {items.map(({ title, body, icon: Icon }) => (
-          <Card key={title} className="flex gap-4 p-6">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-secondary/15 text-secondary">
-              <Icon className="h-6 w-6" aria-hidden />
-            </div>
-            <div>
-              <h2 className="font-serif text-lg font-semibold text-on-surface">{title}</h2>
-              <p className="mt-2 text-sm leading-relaxed text-on-surface/70">{body}</p>
-            </div>
-          </Card>
-        ))}
-      </div>
+      {loading ? (
+        <p className="text-sm text-on-surface/60">Loading session signals…</p>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {cards.map((card) => {
+            const Icon = iconFor(card.kind)
+            return (
+              <Card key={card.title} className="flex gap-4 p-6">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-secondary/15 text-secondary">
+                  <Icon className="h-6 w-6" aria-hidden />
+                </div>
+                <div>
+                  <h2 className="font-serif text-lg font-semibold text-on-surface">{card.title}</h2>
+                  <p className="mt-2 text-sm leading-relaxed text-on-surface/70">{card.body}</p>
+                </div>
+              </Card>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

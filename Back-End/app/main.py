@@ -6,10 +6,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from openai import AsyncOpenAI
 
-from app.api.auth_routes import router as auth_router
+from app.api.auth_routes import ensure_demo_account_ready, router as auth_router
 from app.api.routes import router
 from app.core.config import get_settings
 from app.core.logging_config import setup_logging
+from app.db.database import SessionLocal
 from app.services import ai_service, quran_service
 
 setup_logging()
@@ -35,6 +36,8 @@ async def lifespan(app: FastAPI):
         base_url=settings.longcat_base_url,
     )
     ai_service.set_openai_client(oa)
+    with SessionLocal() as db:
+        ensure_demo_account_ready(db)
     log.info("ASAR Engine started — HTTP + AI clients ready")
     yield
     log.info("ASAR Engine shutting down")
@@ -50,6 +53,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
     ],
     allow_credentials=True,
     allow_methods=["*"],

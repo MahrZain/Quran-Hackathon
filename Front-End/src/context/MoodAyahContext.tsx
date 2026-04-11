@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -11,7 +12,9 @@ import {
 import { isAxiosError } from 'axios'
 import { useAppSession } from '../hooks/useAppSession'
 import { apiClient } from '../lib/apiClient'
-import type { ChatResponse } from '../lib/apiTypes'
+import type { ChatResponse, HistoryMessage } from '../lib/apiTypes'
+import { asarE2eTrace } from '../lib/asarE2eTrace'
+import { dailyAyahFromChatResponse } from '../lib/dailyAyahFromChat'
 import { type DailyAyah, findAyahForMood, getDailyAyahForToday } from '../lib/mockData'
 
 type MoodAyahContextValue = {
@@ -21,6 +24,13 @@ type MoodAyahContextValue = {
   moodLoading: boolean
   aiReflection: string | null
   clearAiReflection: () => void
+  /** Streak from API (chat, mark complete, or dashboard hydrate). */
+  streakCount: number
+  syncStreakCount: (n: number) => void
+  /** Session chat rows from GET /history (refreshed after each successful /chat). */
+  sessionUserMessages: number
+  sessionTotalMessages: number
+  refreshSessionChatStats: () => Promise<void>
 }
 
 const MoodAyahContext = createContext<MoodAyahContextValue | null>(null)
@@ -30,6 +40,28 @@ export function MoodAyahProvider({ children }: { children: ReactNode }) {
   const [displayAyah, setDisplayAyah] = useState<DailyAyah>(() => getDailyAyahForToday())
   const [moodLoading, setMoodLoading] = useState(false)
   const [aiReflection, setAiReflection] = useState<string | null>(null)
+  const [streakCount, setStreakCount] = useState(0)
+  const [sessionUserMessages, setSessionUserMessages] = useState(0)
+  const [sessionTotalMessages, setSessionTotalMessages] = useState(0)
+
+  const syncStreakCount = useCallback((n: number) => {
+    setStreakCount(typeof n === 'number' && !Number.isNaN(n) ? n : 0)
+  }, [])
+
+  const refreshSessionChatStats = useCallback(async () => {
+    try {
+      const { data } = await apiClient.get<HistoryMessage[]>(`/history/${sessionId}`)
+      setSessionTotalMessages(data.length)
+      setSessionUserMessages(data.filter((m) => m.role === 'user').length)
+    } catch {
+      setSessionTotalMessages(0)
+      setSessionUserMessages(0)
+    }
+  }, [sessionId])
+
+  useEffect(() => {
+    void refreshSessionChatStats()
+  }, [refreshSessionChatStats])
 
   const clearAiReflection = useCallback(() => setAiReflection(null), [])
 
@@ -40,12 +72,26 @@ export function MoodAyahProvider({ children }: { children: ReactNode }) {
       setMoodLoading(true)
       setAiReflection(null)
       try {
+        asarE2eTrace('STEP 2 — POST /chat request', {
+          session_id: sessionId,
+          message_len: trimmed.length,
+        })
         const { data } = await apiClient.post<ChatResponse>('/chat', {
           session_id: sessionId,
           message: trimmed,
         })
+        asarE2eTrace('STEP 2–3 — POST /chat response', {
+          reply_len: data.ai_reply?.length,
+          updated_streak_count: data.updated_streak_count,
+          verse_key: data.verse_key,
+          has_audio: Boolean(data.audio_url),
+          uthmani_len: data.verse_text_uthmani?.length ?? 0,
+        })
         setAiReflection(data.ai_reply)
-        setDisplayAyah(findAyahForMood(trimmed))
+        syncStreakCount(data.updated_streak_count)
+        const moodAyah = findAyahForMood(trimmed)
+        setDisplayAyah(dailyAyahFromChatResponse(data, moodAyah))
+        void refreshSessionChatStats()
       } catch (e) {
         let msg = ''
         if (isAxiosError(e)) {
@@ -63,7 +109,7 @@ export function MoodAyahProvider({ children }: { children: ReactNode }) {
         setMoodLoading(false)
       }
     },
-    [moodLoading, sessionId],
+    [moodLoading, sessionId, syncStreakCount, refreshSessionChatStats],
   )
 
   const value = useMemo(
@@ -74,8 +120,24 @@ export function MoodAyahProvider({ children }: { children: ReactNode }) {
       moodLoading,
       aiReflection,
       clearAiReflection,
+      streakCount,
+      syncStreakCount,
+      sessionUserMessages,
+      sessionTotalMessages,
+      refreshSessionChatStats,
     }),
-    [aiReflection, clearAiReflection, displayAyah, moodLoading, runMoodSearch],
+    [
+      aiReflection,
+      clearAiReflection,
+      displayAyah,
+      moodLoading,
+      runMoodSearch,
+      refreshSessionChatStats,
+      sessionTotalMessages,
+      sessionUserMessages,
+      streakCount,
+      syncStreakCount,
+    ],
   )
 
   return <MoodAyahContext.Provider value={value}>{children}</MoodAyahContext.Provider>

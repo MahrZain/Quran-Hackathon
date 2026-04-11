@@ -6,9 +6,10 @@ const SESSION_HEADER = 'X-Session-ID'
 const AUTH_HEADER = 'Authorization'
 export const SESSION_STORAGE_KEY = 'asar_session_id'
 
+/** Prefer VITE_API_BASE_URL; in dev, same-origin `/api/v1` uses Vite proxy (vite.config.ts). */
 const baseURL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ??
-  'http://localhost:8000/api/v1'
+  (import.meta.env.DEV ? '/api/v1' : 'http://127.0.0.1:8000/api/v1')
 
 export const apiClient = axios.create({
   baseURL,

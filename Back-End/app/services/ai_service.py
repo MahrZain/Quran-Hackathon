@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
 from openai import AsyncOpenAI
 from sqlalchemy import desc, select
@@ -15,6 +16,15 @@ from app.services import quran_service
 log = logging.getLogger(__name__)
 
 _openai_client: AsyncOpenAI | None = None
+
+
+@dataclass
+class ReflectionResult:
+    reply: str
+    verse_key: str
+    verse_text_uthmani: str
+    verse_translation: str
+    audio_url: str | None
 
 
 def set_openai_client(client: AsyncOpenAI | None) -> None:
@@ -50,7 +60,7 @@ def _last_messages_for_prompt(db: Session, session_id: str, limit: int = 5) -> l
     return list(reversed(rows))
 
 
-async def generate_reflection(session_id: str, user_message: str, db: Session) -> str:
+async def generate_reflection(session_id: str, user_message: str, db: Session) -> ReflectionResult:
     settings = get_settings()
     if not settings.longcat_api_key:
         raise ValueError("LONGCAT_API_KEY is not configured")
@@ -93,4 +103,23 @@ async def generate_reflection(session_id: str, user_message: str, db: Session) -
     choice = completion.choices[0].message.content
     if not choice or not choice.strip():
         raise ValueError("Empty model response")
-    return choice.strip()
+    reply = choice.strip()
+
+    uthmani, trans = "", ""
+    audio: str | None = None
+    try:
+        uthmani, trans = await quran_service.fetch_verse_uthmani_and_translation(verse_key, settings)
+    except Exception:
+        log.warning("verse display fetch failed for %s", verse_key, exc_info=True)
+    try:
+        audio = await quran_service.fetch_audio_url(verse_key, settings)
+    except Exception:
+        log.warning("verse audio fetch failed for %s", verse_key, exc_info=True)
+
+    return ReflectionResult(
+        reply=reply,
+        verse_key=verse_key,
+        verse_text_uthmani=uthmani or "",
+        verse_translation=trans or "",
+        audio_url=audio,
+    )

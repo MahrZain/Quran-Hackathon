@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { QuranAyahText } from './QuranAyahText'
 import { useSound } from '../hooks/useSound'
@@ -8,9 +9,24 @@ type DailyAyahBlockProps = {
   className?: string
 }
 
+type TextMode = 'arabic' | 'translation'
+
 export function DailyAyahBlock({ ayah, className = '' }: DailyAyahBlockProps) {
   const { playRecitation } = useSound()
+  const [textMode, setTextMode] = useState<TextMode>('arabic')
+  const [audioBusy, setAudioBusy] = useState(false)
+  const [playErr, setPlayErr] = useState<string | null>(null)
+
   const ref = `${ayah.surahName} • ${ayah.surahId}:${ayah.ayahNumber}`
+  const focusHref = `/focus?surah=${ayah.surahId}&ayah=${ayah.ayahNumber}`
+  const readerHref = `/quran/${ayah.surahId}?ayah=${ayah.ayahNumber}`
+
+  const tabClass = (active: boolean) =>
+    `rounded-full px-4 py-1.5 text-xs font-bold transition ${
+      active
+        ? 'bg-surface-container-lowest text-on-surface shadow-sm'
+        : 'text-on-surface-variant hover:bg-surface-container-high/60'
+    }`
 
   return (
     <div className={`asar-glass relative flex h-full min-h-0 flex-col overflow-hidden rounded-stitch p-6 sm:p-8 ${className}`}>
@@ -18,26 +34,46 @@ export function DailyAyahBlock({ ayah, className = '' }: DailyAyahBlockProps) {
         <span className="inline-flex w-fit rounded-full bg-primary-container/10 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-on-primary-fixed-variant">
           {ref}
         </span>
-        <div className="flex items-center gap-2 rounded-full bg-surface-container p-1">
+        <div className="flex items-center gap-2 rounded-full bg-surface-container p-1" role="tablist" aria-label="Verse text">
           <button
             type="button"
-            className="rounded-full bg-surface-container-lowest px-4 py-1.5 text-xs font-bold text-on-surface shadow-sm"
+            role="tab"
+            aria-selected={textMode === 'arabic'}
+            className={tabClass(textMode === 'arabic')}
+            onClick={() => setTextMode('arabic')}
           >
             Arabic
           </button>
           <button
             type="button"
-            className="rounded-full px-4 py-1.5 text-xs font-medium text-on-surface-variant"
+            role="tab"
+            aria-selected={textMode === 'translation'}
+            className={tabClass(textMode === 'translation')}
+            onClick={() => setTextMode('translation')}
           >
             Translation
           </button>
         </div>
       </div>
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 text-center">
-        <QuranAyahText text={ayah.arabic} flexFill className="mx-auto w-full justify-center" />
-        <p className="max-w-md shrink-0 font-serif text-base italic text-on-surface/70 sm:text-lg">
-          &ldquo;{ayah.translation}&rdquo;
-        </p>
+        {textMode === 'arabic' ? (
+          <>
+            <QuranAyahText text={ayah.arabic} flexFill className="mx-auto w-full justify-center" />
+            <p className="max-w-md shrink-0 font-serif text-sm italic text-on-surface/55 sm:text-base">
+              &ldquo;{ayah.translation}&rdquo;
+            </p>
+          </>
+        ) : (
+          <>
+            <QuranAyahText
+              text={ayah.arabic}
+              className="mx-auto max-w-2xl justify-center text-lg opacity-80 sm:text-xl"
+            />
+            <p className="max-w-lg shrink-0 font-serif text-base leading-relaxed text-on-surface/90 sm:text-lg">
+              &ldquo;{ayah.translation}&rdquo;
+            </p>
+          </>
+        )}
       </div>
       <div className="mt-6 flex flex-col gap-4 border-t border-outline-variant/20 pt-6 sm:mt-8 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
         <div className="flex items-center gap-3">
@@ -49,16 +85,34 @@ export function DailyAyahBlock({ ayah, className = '' }: DailyAyahBlockProps) {
         <div className="flex flex-wrap items-center gap-4 sm:gap-6">
           <button
             type="button"
-            onClick={() => playRecitation({ surahId: ayah.surahId, ayahNumber: ayah.ayahNumber })}
-            className="flex items-center gap-2 text-sm font-bold text-primary/80 hover:text-primary"
+            disabled={audioBusy}
+            onClick={() => {
+              setPlayErr(null)
+              setAudioBusy(true)
+              void (async () => {
+                const result = await playRecitation({
+                  surahId: ayah.surahId,
+                  ayahNumber: ayah.ayahNumber,
+                  audioUrl: ayah.audioUrl,
+                })
+                setAudioBusy(false)
+                if (result === 'no_url') {
+                  setPlayErr('No audio URL for this verse. Is the ASAR API running?')
+                } else if (result === 'blocked') {
+                  setPlayErr('Playback was blocked — try tapping Play again, or check the browser audio permission.')
+                }
+              })()
+            }}
+            className="flex items-center gap-2 text-sm font-bold text-primary/80 hover:text-primary disabled:opacity-55"
           >
             <span className="material-symbols-outlined text-base" aria-hidden>
               play_circle
             </span>
-            Play Recitation
+            {audioBusy ? 'Loading…' : 'Play Recitation'}
           </button>
+          {playErr ? <p className="w-full text-xs text-error sm:w-auto">{playErr}</p> : null}
           <Link
-            to="/focus"
+            to={focusHref}
             className="flex items-center gap-2 text-sm font-bold text-primary/80 hover:text-primary hover:underline"
           >
             <span className="material-symbols-outlined text-base" aria-hidden>
@@ -67,7 +121,7 @@ export function DailyAyahBlock({ ayah, className = '' }: DailyAyahBlockProps) {
             Focus — Ayah reflection
           </Link>
           <Link
-            to={`/quran/${ayah.surahId}`}
+            to={readerHref}
             className="text-sm font-bold text-primary/70 hover:text-primary hover:underline"
           >
             Open in reader

@@ -13,6 +13,8 @@ export type DailyAyah = {
   ayahNumber: number
   arabic: string
   translation: string
+  /** When set (e.g. from chat / Quran API), Play Recitation uses this URL. */
+  audioUrl?: string | null
 }
 
 export type StreakConstellationDay = {

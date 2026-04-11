@@ -17,7 +17,9 @@ export function constellationDaysFromStreak(streakCount: number, width = 7): Str
 
     days.push({
       dateLabel,
-      impact: isFilled ? 'Reading logged for this alignment window.' : 'No reading logged yet.',
+      impact: isFilled
+        ? 'Counts toward your current streak (reading logged this day).'
+        : 'No streak reading this day — tap Mark complete after your āyah.',
       state: isFilled ? 'filled' : 'empty',
       isToday,
     })

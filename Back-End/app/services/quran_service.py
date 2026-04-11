@@ -13,8 +13,11 @@ from app.core.config import Settings, get_settings
 log = logging.getLogger(__name__)
 
 _client: httpx.AsyncClient | None = None
-_oauth_access_token: str | None = None
+# Must not share a name with `_oauth_access_token()` — assigning to that global would replace the coroutine.
+_oauth_token_cache: str | None = None
 _oauth_token_expires_monotonic: float = 0.0
+# After token 401/403, skip hitting the OAuth server again for a few minutes (many verse fetches per chat).
+_oauth_skip_until_monotonic: float = 0.0
 
 
 def set_http_client(client: httpx.AsyncClient | None) -> None:
@@ -30,7 +33,7 @@ def _client_or_raise() -> httpx.AsyncClient:
 
 async def _oauth_access_token(settings: Settings) -> str | None:
     """Client-credentials token; cached until shortly before expiry."""
-    global _oauth_access_token, _oauth_token_expires_monotonic
+    global _oauth_token_cache, _oauth_token_expires_monotonic, _oauth_skip_until_monotonic
     if not (
         settings.quran_oauth_token_url
         and settings.quran_oauth_client_id
@@ -39,46 +42,92 @@ async def _oauth_access_token(settings: Settings) -> str | None:
         return None
 
     now = time.monotonic()
-    if _oauth_access_token and now < _oauth_token_expires_monotonic:
-        return _oauth_access_token
+    if now < _oauth_skip_until_monotonic:
+        return None
+    if _oauth_token_cache and now < _oauth_token_expires_monotonic:
+        return _oauth_token_cache
 
     client = _client_or_raise()
-    form: dict[str, str] = {
-        "grant_type": "client_credentials",
-        "client_id": settings.quran_oauth_client_id,
-        "client_secret": settings.quran_oauth_client_secret,
-    }
+    cid = (settings.quran_oauth_client_id or "").strip()
+    csec = (settings.quran_oauth_client_secret or "").strip()
+    form: dict[str, str] = {"grant_type": "client_credentials"}
     if settings.quran_oauth_scope.strip():
         form["scope"] = settings.quran_oauth_scope.strip()
+    elif "quran.foundation" in (settings.quran_oauth_token_url or "").lower():
+        # Content API client_credentials requires `content` (see Quran Foundation quickstart).
+        form["scope"] = "content"
+    # Quran Foundation Hydra expects client_secret_basic (not client_secret_post).
+    auth = httpx.BasicAuth(cid, csec) if cid and csec else None
 
-    r = await client.post(
-        settings.quran_oauth_token_url,
-        data=form,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-        timeout=30.0,
-    )
-    r.raise_for_status()
-    body = r.json()
+    try:
+        r = await client.post(
+            settings.quran_oauth_token_url,
+            data=form,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            auth=auth,
+            timeout=30.0,
+        )
+        r.raise_for_status()
+        body = r.json()
+    except httpx.HTTPStatusError as e:
+        _oauth_token_cache = None
+        # One chat triggers many Quran calls; avoid log spam + hammering the token endpoint.
+        if e.response.status_code in (401, 403):
+            _oauth_skip_until_monotonic = now + 300.0
+            log.warning(
+                "Quran OAuth token rejected (%s); using anonymous Content API (e.g. api.quran.com). "
+                "Set valid QURAN_OAUTH_CLIENT_ID / QURAN_OAUTH_CLIENT_SECRET, or remove OAuth env vars.",
+                e.response.status_code,
+            )
+        else:
+            _oauth_skip_until_monotonic = now + 120.0
+            log.warning(
+                "Quran OAuth token HTTP %s (continuing without Bearer)",
+                e.response.status_code,
+            )
+        return None
+    except Exception as e:
+        _oauth_token_cache = None
+        _oauth_skip_until_monotonic = now + 120.0
+        log.warning("Quran OAuth token request failed: %s (continuing without Bearer)", e)
+        return None
     token = body.get("access_token")
     if not token:
         log.error("OAuth token response missing access_token: %s", body)
         return None
     ttl = int(body.get("expires_in", 3600))
-    _oauth_access_token = token
+    _oauth_token_cache = token
     _oauth_token_expires_monotonic = now + max(ttl - 60, 30)
-    return _oauth_access_token
+    _oauth_skip_until_monotonic = 0.0
+    return _oauth_token_cache
 
 
 async def _auth_headers(settings: Settings) -> dict[str, str]:
     h: dict[str, str] = {}
     oauth_token = await _oauth_access_token(settings)
     if oauth_token:
+        # Quran Foundation Content APIs (and Reflect read paths) expect these headers.
+        cid = (settings.quran_oauth_client_id or "").strip()
+        if cid:
+            h["x-auth-token"] = oauth_token
+            h["x-client-id"] = cid
+        # Legacy / transitional hosts may still accept Bearer.
         h["Authorization"] = f"Bearer {oauth_token}"
         return h
     if settings.quran_api_key:
         h["X-API-Key"] = settings.quran_api_key
         h["Authorization"] = f"Bearer {settings.quran_api_key}"
     return h
+
+
+def _verse_uthmani_and_translation_from_payload(data: dict[str, Any]) -> tuple[str, str]:
+    verse = data.get("verse") or {}
+    text_uthmani = verse.get("text_uthmani") or verse.get("text") or ""
+    trans = ""
+    trs = verse.get("translations") or []
+    if trs:
+        trans = trs[0].get("text") or ""
+    return text_uthmani, trans
 
 
 async def fetch_verse_text(verse_key: str, settings: Settings | None = None) -> str:
@@ -95,14 +144,26 @@ async def fetch_verse_text(verse_key: str, settings: Settings | None = None) -> 
     r = await client.get(url, params=params, headers=await _auth_headers(s), timeout=30.0)
     r.raise_for_status()
     data: dict[str, Any] = r.json()
-    verse = data.get("verse") or {}
-    text_uthmani = verse.get("text_uthmani") or verse.get("text") or ""
-    trans = ""
-    trs = verse.get("translations") or []
-    if trs:
-        trans = trs[0].get("text") or ""
+    text_uthmani, trans = _verse_uthmani_and_translation_from_payload(data)
     parts = [p for p in (text_uthmani, trans) if p]
     return "\n".join(parts) if parts else ""
+
+
+async def fetch_verse_uthmani_and_translation(verse_key: str, settings: Settings | None = None) -> tuple[str, str]:
+    """Uthmanic Arabic and first translation line for UI + chat metadata."""
+    s = settings or get_settings()
+    client = _client_or_raise()
+    url = f"{s.quran_api_base_url.rstrip('/')}/verses/by_key/{verse_key}"
+    params = {
+        "language": "en",
+        "words": "false",
+        "fields": "text_uthmani,text_imlaei,translations",
+        "translations": str(s.quran_translation_resource_id),
+    }
+    r = await client.get(url, params=params, headers=await _auth_headers(s), timeout=30.0)
+    r.raise_for_status()
+    data: dict[str, Any] = r.json()
+    return _verse_uthmani_and_translation_from_payload(data)
 
 
 async def fetch_tafsir_or_translation(verse_key: str, settings: Settings | None = None) -> str:
@@ -120,22 +181,135 @@ async def fetch_tafsir_or_translation(verse_key: str, settings: Settings | None 
     return trs[0].get("text") or ""
 
 
+def _absolute_audio_url(maybe_relative: str, settings: Settings) -> str | None:
+    u = (maybe_relative or "").strip()
+    if not u:
+        return None
+    if u.startswith("http://") or u.startswith("https://"):
+        return u
+    # api.quran.com often returns paths like "Alafasy/mp3/001001.mp3"
+    base = "https://verses.quran.com"
+    return f"{base.rstrip('/')}/{u.lstrip('/')}"
+
+
+def _audio_url_from_verse_obj(verse: dict[str, Any], settings: Settings) -> str | None:
+    audio = verse.get("audio")
+    if isinstance(audio, str):
+        return _absolute_audio_url(audio, settings)
+    if isinstance(audio, dict):
+        for key in ("url", "audio_url", "audioUrl"):
+            u = audio.get(key)
+            if isinstance(u, str):
+                out = _absolute_audio_url(u, settings)
+                if out:
+                    return out
+    if isinstance(audio, list) and audio:
+        first = audio[0]
+        if isinstance(first, dict):
+            u = first.get("url") or first.get("audio_url")
+            if isinstance(u, str):
+                return _absolute_audio_url(u, settings)
+    return None
+
+
+def _fallback_verse_audio_url(verse_key: str, settings: Settings) -> str | None:
+    """Mishari Al-ʿAfāsy per-ayah files on verses.quran.com (works without verse JSON `audio`)."""
+    parts = verse_key.strip().split(":")
+    if len(parts) != 2:
+        return None
+    try:
+        surah, ayah = int(parts[0]), int(parts[1])
+    except ValueError:
+        return None
+    if not (1 <= surah <= 114) or ayah < 1:
+        return None
+    block = f"{surah:03d}{ayah:03d}"
+    tpl = (settings.quran_verse_audio_url_template or "").strip()
+    if "{block}" in tpl:
+        return tpl.format(block=block)
+    return f"https://verses.quran.com/Alafasy/mp3/{block}.mp3"
+
+
 async def fetch_audio_url(verse_key: str, settings: Settings | None = None) -> str | None:
-    """Return audio URL when the upstream API exposes per-verse audio metadata."""
+    """Per-verse recitation URL: upstream `audio` field when present, else public Alafasy CDN template."""
     s = settings or get_settings()
     client = _client_or_raise()
     url = f"{s.quran_api_base_url.rstrip('/')}/verses/by_key/{verse_key}"
     params = {"language": "en", "words": "false", "fields": "audio"}
-    r = await client.get(url, params=params, headers=await _auth_headers(s), timeout=30.0)
+    try:
+        r = await client.get(url, params=params, headers=await _auth_headers(s), timeout=30.0)
+        r.raise_for_status()
+        data = r.json()
+        verse = data.get("verse") or {}
+        from_api = _audio_url_from_verse_obj(verse, s)
+        if from_api:
+            return from_api
+    except Exception as e:
+        # OAuth misconfiguration or API shape without `audio` — CDN fallback still works.
+        log.debug("verse audio API path skipped for %s: %s", verse_key, e)
+
+    fb = _fallback_verse_audio_url(verse_key, s)
+    if fb:
+        log.debug("using fallback verse audio url for %s", verse_key)
+    return fb
+
+
+def _revelation_label(place: str | None) -> str:
+    if not place:
+        return ""
+    p = place.lower()
+    if p == "makkah":
+        return "Meccan"
+    if p == "madinah":
+        return "Medinan"
+    return place.replace("_", " ").title()
+
+
+def _chapter_summary_from_api(ch: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": int(ch["id"]),
+        "name": ch.get("name_arabic") or "",
+        "transliteration": ch.get("name_simple") or "",
+        "verses": int(ch.get("verses_count") or 0),
+        "revelation": _revelation_label(ch.get("revelation_place")),
+    }
+
+
+async def fetch_chapters_catalog(settings: Settings | None = None) -> list[dict[str, Any]]:
+    """All 114 surahs (id, Arabic name, English simple name, verse count, revelation)."""
+    s = settings or get_settings()
+    client = _client_or_raise()
+    url = f"{s.quran_api_base_url.rstrip('/')}/chapters?language=en"
+    r = await client.get(url, headers=await _auth_headers(s), timeout=30.0)
     r.raise_for_status()
     data = r.json()
-    verse = data.get("verse") or {}
-    audio = verse.get("audio")
-    if isinstance(audio, dict):
-        return audio.get("url")
-    if isinstance(audio, str):
-        return audio
-    return None
+    rows: list[dict[str, Any]] = []
+    for ch in data.get("chapters") or []:
+        if not isinstance(ch, dict):
+            continue
+        try:
+            rows.append(_chapter_summary_from_api(ch))
+        except (KeyError, TypeError, ValueError):
+            continue
+    rows.sort(key=lambda x: x["id"])
+    return rows
+
+
+async def fetch_chapter_detail(chapter_id: int, settings: Settings | None = None) -> dict[str, Any] | None:
+    if chapter_id < 1 or chapter_id > 114:
+        return None
+    s = settings or get_settings()
+    client = _client_or_raise()
+    url = f"{s.quran_api_base_url.rstrip('/')}/chapters/{chapter_id}?language=en"
+    r = await client.get(url, headers=await _auth_headers(s), timeout=30.0)
+    r.raise_for_status()
+    ch = r.json().get("chapter")
+    if not isinstance(ch, dict):
+        return None
+    try:
+        return _chapter_summary_from_api(ch)
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 async def post_user_activity(verse_key: str, session_id: str, settings: Settings | None = None) -> bool:

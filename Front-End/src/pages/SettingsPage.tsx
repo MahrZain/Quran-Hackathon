@@ -84,19 +84,14 @@ export function SettingsPage() {
             </button>
           </div>
         ) : (
-          <div className="mt-3 flex flex-wrap gap-3">
+          <div className="mt-3">
             <Link
-              to="/login"
+              to="/welcome"
               className="inline-flex rounded-full bg-primary px-4 py-2 text-sm font-semibold text-on-primary"
             >
               Sign in
             </Link>
-            <Link
-              to="/register"
-              className="inline-flex rounded-full border border-primary/40 px-4 py-2 text-sm font-medium text-primary"
-            >
-              Create account
-            </Link>
+            <p className="mt-2 text-xs text-on-surface/55">Use Try demo or Continue with Quran.com on the welcome screen.</p>
           </div>
         )}
       </section>

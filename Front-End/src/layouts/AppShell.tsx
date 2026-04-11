@@ -1,15 +1,15 @@
 import { m } from 'framer-motion'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { AsarWordmark } from '../components/AsarWordmark'
 import { MoodCompassBar } from '../components/MoodCompassBar'
 import { MoodAyahProvider } from '../context/MoodAyahContext'
+import { useAuth } from '../context/AuthContext'
 import { AppSessionProvider } from '../hooks/useAppSession'
 
 const sideNav = [
   { to: '/', label: 'Dashboard', icon: 'dashboard', end: true },
   { to: '/dhikr', label: 'Daily Dhikr', icon: 'potted_plant', end: false },
-  { to: '/quran', label: 'Quran Progress', icon: 'menu_book', end: false },
-  { to: '/community', label: 'Community', icon: 'group', end: false },
+  { to: '/quran', label: 'Quran progress', icon: 'menu_book', end: false },
   { to: '/library', label: 'Library', icon: 'local_library', end: false },
 ] as const
 
@@ -32,6 +32,8 @@ function Icon({ name }: { name: string }) {
 
 function AppShellInner() {
   const location = useLocation()
+  const navigate = useNavigate()
+  const { logout } = useAuth()
 
   return (
     <div className="min-h-svh bg-surface text-on-surface">
@@ -125,15 +127,22 @@ function AppShellInner() {
               Start Dhikr
             </NavLink>
             <div className="mt-4 flex flex-wrap justify-center gap-x-3 gap-y-1 text-[11px] text-primary/55">
-              <NavLink to="/welcome" className="hover:text-primary hover:underline">
+              <NavLink to="/" end className="hover:text-primary hover:underline">
                 Welcome
               </NavLink>
               <span aria-hidden className="text-on-surface-variant">
                 ·
               </span>
-              <NavLink to="/login" className="hover:text-primary hover:underline">
-                Sign in
-              </NavLink>
+              <button
+                type="button"
+                className="cursor-pointer bg-transparent p-0 font-inherit text-[11px] text-primary/55 hover:text-primary hover:underline"
+                onClick={() => {
+                  logout()
+                  navigate('/welcome', { replace: true })
+                }}
+              >
+                Sign out
+              </button>
             </div>
             <div className="mt-8 space-y-2 border-t border-outline-variant/10 pb-4 pt-6">
               <NavLink

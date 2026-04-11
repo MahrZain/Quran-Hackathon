@@ -14,6 +14,35 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     ai_reply: str
     updated_streak_count: int
+    verse_key: str = ""
+    verse_text_uthmani: str = ""
+    verse_translation: str = ""
+    audio_url: str | None = None
+
+
+class VerseBundleResponse(BaseModel):
+    """Uthmani text, translation, and optional audio URL for a verse key (e.g. 94:5)."""
+
+    verse_key: str
+    verse_text_uthmani: str = ""
+    verse_translation: str = ""
+    audio_url: str | None = None
+
+
+class ChapterSummary(BaseModel):
+    """One surah row for the Quran progress / reader index (from upstream chapters API)."""
+
+    id: int
+    name: str
+    transliteration: str = ""
+    verses: int = 0
+    revelation: str = ""
+
+
+class StreakSnapshot(BaseModel):
+    """Current streak for a session (from SQLite streak_activities)."""
+
+    updated_streak_count: int
 
 
 class HistoryMessage(BaseModel):
@@ -37,6 +66,7 @@ class StreakResponse(BaseModel):
     ok: bool
     updated_streak_count: int
     message: str = ""
+    quran_foundation_synced: bool = False
 
 
 class UserRegister(BaseModel):
