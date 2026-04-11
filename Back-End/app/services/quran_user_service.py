@@ -121,11 +121,17 @@ async def sync_activity_to_quran_foundation(
                 db_session, user_record, activity_data, _retry_after_refresh=True
             )
         if r.status_code >= 400:
-            log.warning(
-                "Quran Foundation activity sync HTTP %s: %s",
-                r.status_code,
-                (r.text or "")[:300],
-            )
+            if r.status_code == 403 and "insufficient_scope" in (r.text or ""):
+                log.warning(
+                    "Quran activity sync 403 insufficient_scope — authorize with activity_day scopes "
+                    "(re-run Continue with Quran.com after upgrading the app)."
+                )
+            else:
+                log.warning(
+                    "Quran Foundation activity sync HTTP %s: %s",
+                    r.status_code,
+                    (r.text or "")[:300],
+                )
             return False
         return True
     except httpx.HTTPError as e:

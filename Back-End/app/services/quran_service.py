@@ -12,6 +12,9 @@ from app.core.config import Settings, get_settings
 
 log = logging.getLogger(__name__)
 
+# When Foundation prelive/live Content returns 404 for a verse+translation combo, public v4 matches api.quran.com.
+_PUBLIC_CONTENT_API_V4 = "https://api.quran.com/api/v4"
+
 _client: httpx.AsyncClient | None = None
 # Must not share a name with `_oauth_access_token()` — assigning to that global would replace the coroutine.
 _oauth_token_cache: str | None = None
@@ -141,7 +144,11 @@ async def fetch_verse_text(verse_key: str, settings: Settings | None = None) -> 
         "fields": "text_uthmani,text_imlaei,translations",
         "translations": str(s.quran_translation_resource_id),
     }
-    r = await client.get(url, params=params, headers=await _auth_headers(s), timeout=30.0)
+    headers = await _auth_headers(s)
+    r = await client.get(url, params=params, headers=headers, timeout=30.0)
+    if r.status_code == 404 and not s.quran_api_base_url.rstrip("/").endswith("api.quran.com/api/v4"):
+        pub = f"{_PUBLIC_CONTENT_API_V4}/verses/by_key/{verse_key}"
+        r = await client.get(pub, params=params, headers={}, timeout=30.0)
     r.raise_for_status()
     data: dict[str, Any] = r.json()
     text_uthmani, trans = _verse_uthmani_and_translation_from_payload(data)
@@ -160,7 +167,15 @@ async def fetch_verse_uthmani_and_translation(verse_key: str, settings: Settings
         "fields": "text_uthmani,text_imlaei,translations",
         "translations": str(s.quran_translation_resource_id),
     }
-    r = await client.get(url, params=params, headers=await _auth_headers(s), timeout=30.0)
+    headers = await _auth_headers(s)
+    r = await client.get(url, params=params, headers=headers, timeout=30.0)
+    if r.status_code == 404 and not s.quran_api_base_url.rstrip("/").endswith("api.quran.com/api/v4"):
+        log.debug(
+            "verse by_key 404 on configured base; retrying public api.quran.com for %s",
+            verse_key,
+        )
+        pub = f"{_PUBLIC_CONTENT_API_V4}/verses/by_key/{verse_key}"
+        r = await client.get(pub, params=params, headers={}, timeout=30.0)
     r.raise_for_status()
     data: dict[str, Any] = r.json()
     return _verse_uthmani_and_translation_from_payload(data)

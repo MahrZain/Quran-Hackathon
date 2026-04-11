@@ -150,7 +150,9 @@ def quran_oauth_start() -> RedirectResponse:
     challenge = quran_user_service.pkce_challenge_from_verifier(verifier)
     auth_url = quran_user_service.oauth_authorize_endpoint(s)
     redirect_uri = s.quran_oauth_redirect_uri.strip()
-    scope = "openid offline_access user streak"
+    # streak alone does not cover POST …/auth/v1/activity-days — see Activity Days scopes:
+    # https://api-docs.quran.foundation/docs/user_related_apis_versioned/scopes/
+    scope = "openid offline_access user streak activity_day activity_day.create"
     qs = urllib.parse.urlencode(
         {
             "response_type": "code",
