@@ -1,0 +1,68 @@
+import enum
+from datetime import date, datetime, timezone
+
+
+def _utc_naive_now() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+from sqlalchemy import Date, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.db.database import Base
+
+
+class MessageRole(str, enum.Enum):
+    user = "user"
+    assistant = "assistant"
+
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+
+    session_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_naive_now)
+
+    messages: Mapped[list["ChatMessage"]] = relationship(back_populates="session", cascade="all, delete-orphan")
+    streaks: Mapped[list["StreakActivity"]] = relationship(back_populates="session", cascade="all, delete-orphan")
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(String(36), ForeignKey("user_sessions.session_id"), index=True)
+    role: Mapped[MessageRole] = mapped_column(
+        SAEnum(
+            MessageRole,
+            native_enum=False,
+            values_callable=lambda x: [e.value for e in x],
+        )
+    )
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_naive_now, index=True)
+
+    session: Mapped["UserSession"] = relationship(back_populates="messages")
+
+
+class StreakActivity(Base):
+    __tablename__ = "streak_activities"
+    __table_args__ = (UniqueConstraint("session_id", "activity_date", name="uq_streak_session_day"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(String(36), ForeignKey("user_sessions.session_id"), index=True)
+    activity_date: Mapped[date] = mapped_column(Date, index=True)
+    ayah_read: Mapped[str] = mapped_column(String(32))
+
+    session: Mapped["UserSession"] = relationship(back_populates="streaks")
+
+
+class User(Base):
+    """Registered account (JWT subject is stringified id)."""
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_naive_now)
