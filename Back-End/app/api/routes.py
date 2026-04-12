@@ -5,10 +5,10 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import desc, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user_optional
@@ -16,15 +16,18 @@ from app.db.database import get_db
 from app.models.domain import ChatMessage, MessageRole, StreakActivity, User, UserSession
 from app.models.schemas import (
     ChapterSummary,
+    ChatMessageRequest,
+    ChatMessageResponse,
     ChatRequest,
     ChatResponse,
+    ChatVerseCard,
     HistoryMessage,
     StreakRequest,
     StreakResponse,
     StreakSnapshot,
     VerseBundleResponse,
 )
-from app.services import ai_service, quran_service, quran_user_service
+from app.services import ai_service, chat_rag_rest, quran_service, quran_user_service
 from app.services.streak_logic import compute_streak_count
 
 log = logging.getLogger(__name__)
@@ -40,16 +43,37 @@ def _ensure_session(db: Session, session_id: str) -> None:
         db.commit()
 
 
+def _effective_session_id(db: Session, user: User | None, client_session_id: str) -> str:
+    """
+    Authenticated users: chat/streak/history are keyed only by the server-stored asar_session_id
+    so a stale X-Session-ID from another account cannot bleed state. Anonymous: use client id.
+    """
+    if user is None:
+        return client_session_id
+    cur = (user.asar_session_id or "").strip()
+    if not cur:
+        cur = str(uuid4())
+        user.asar_session_id = cur
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    return cur
+
+
 @router.post("/chat", response_model=ChatResponse)
-async def chat(payload: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
-    sid = str(payload.session_id)
+async def chat(
+    payload: ChatRequest,
+    db: Session = Depends(get_db),
+    user: User | None = Depends(get_current_user_optional),
+) -> ChatResponse:
+    sid = _effective_session_id(db, user, str(payload.session_id))
     _ensure_session(db, sid)
 
     db.add(ChatMessage(session_id=sid, role=MessageRole.user, content=payload.message.strip()))
     db.commit()
 
     try:
-        result = await ai_service.generate_reflection(sid, payload.message, db)
+        result = await ai_service.generate_verified_chat_turn(sid, payload.message, db)
     except ValueError as e:
         log.warning("chat unavailable session=%s: %s", sid, e)
         raise HTTPException(status_code=503, detail=str(e)) from e
@@ -79,10 +103,58 @@ async def chat(payload: ChatRequest, db: Session = Depends(get_db)) -> ChatRespo
     )
 
 
+@router.post("/chat/message", response_model=ChatMessageResponse)
+async def chat_message(
+    payload: ChatMessageRequest,
+    db: Session = Depends(get_db),
+    user: User | None = Depends(get_current_user_optional),
+) -> ChatMessageResponse:
+    """
+    REST-grounded RAG chat (Quran.com search + verse fetch, then LLM formatting only).
+    Optional `history` for multi-turn; streak is unchanged.
+    """
+    if payload.history:
+        log.debug("chat/message client sent history=%d turns", len(payload.history))
+    sid = _effective_session_id(db, user, str(payload.session_id))
+    _ensure_session(db, sid)
+
+    db.add(ChatMessage(session_id=sid, role=MessageRole.user, content=payload.message.strip()))
+    db.commit()
+
+    try:
+        answer, verse_cards = await chat_rag_rest.run_rest_rag_chat(
+            user_message=payload.message,
+            history=payload.history,
+        )
+    except ValueError as e:
+        log.warning("chat/message unavailable session=%s: %s", sid, e)
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    except Exception as e:
+        log.error("chat/message error session=%s: %s", sid, e)
+        raise HTTPException(status_code=500, detail="Chat failed") from e
+
+    db.add(ChatMessage(session_id=sid, role=MessageRole.assistant, content=answer))
+    db.commit()
+
+    verses = [ChatVerseCard(ayah=v.ayah, reference=v.reference, translation=v.translation) for v in verse_cards]
+    log.info(
+        "chat/message ok session=%s msg_len=%d answer_len=%d verses=%d",
+        sid,
+        len(payload.message),
+        len(answer),
+        len(verses),
+    )
+    return ChatMessageResponse(answer=answer, verses=verses)
+
+
 @router.get("/streak/{session_id}", response_model=StreakSnapshot)
-def streak_summary(session_id: UUID, db: Session = Depends(get_db)) -> StreakSnapshot:
+def streak_summary(
+    session_id: UUID,
+    db: Session = Depends(get_db),
+    user: User | None = Depends(get_current_user_optional),
+) -> StreakSnapshot:
     """Current streak from SQLite `streak_activities` for this session."""
-    sid = str(session_id)
+    sid = _effective_session_id(db, user, str(session_id))
     n = compute_streak_count(sid, db)
     return StreakSnapshot(updated_streak_count=n)
 
@@ -143,8 +215,12 @@ async def chapter_detail(chapter_id: int) -> ChapterSummary:
 
 
 @router.get("/history/{session_id}", response_model=list[HistoryMessage])
-def history(session_id: UUID, db: Session = Depends(get_db)) -> list[HistoryMessage]:
-    sid = str(session_id)
+def history(
+    session_id: UUID,
+    db: Session = Depends(get_db),
+    user: User | None = Depends(get_current_user_optional),
+) -> list[HistoryMessage]:
+    sid = _effective_session_id(db, user, str(session_id))
     rows = db.execute(
         select(ChatMessage).where(ChatMessage.session_id == sid).order_by(ChatMessage.created_at.asc())
     ).scalars().all()
@@ -157,7 +233,7 @@ async def streak(
     db: Session = Depends(get_db),
     user: User | None = Depends(get_current_user_optional),
 ) -> StreakResponse:
-    sid = str(payload.session_id)
+    sid = _effective_session_id(db, user, str(payload.session_id))
     _ensure_session(db, sid)
 
     d = payload.activity_date or datetime.now(timezone.utc).date()
@@ -178,7 +254,7 @@ async def streak(
     elif not (user.quran_access_token or "").strip():
         log.info("Demo Mode: Skipping external sync (no Quran Foundation user token on record)")
     else:
-        activity_payload = {"verseKey": ayah, "activityDate": str(d)}
+        activity_payload = quran_user_service.build_activity_day_quran_payload(ayah, d)
         try:
             quran_synced = await quran_user_service.sync_activity_to_quran_foundation(
                 db, user, activity_payload

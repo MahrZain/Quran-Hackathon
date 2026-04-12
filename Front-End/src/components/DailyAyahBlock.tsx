@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useMoodAyah } from '../context/MoodAyahContext'
 import { QuranAyahText } from './QuranAyahText'
 import { useSound } from '../hooks/useSound'
 import type { DailyAyah } from '../lib/mockData'
@@ -12,6 +13,7 @@ type DailyAyahBlockProps = {
 type TextMode = 'arabic' | 'translation'
 
 export function DailyAyahBlock({ ayah, className = '' }: DailyAyahBlockProps) {
+  const { verseEnrichmentStatus } = useMoodAyah()
   const { playRecitation } = useSound()
   const [textMode, setTextMode] = useState<TextMode>('arabic')
   const [audioBusy, setAudioBusy] = useState(false)
@@ -75,12 +77,26 @@ export function DailyAyahBlock({ ayah, className = '' }: DailyAyahBlockProps) {
           </>
         )}
       </div>
-      <div className="mt-6 flex flex-col gap-4 border-t border-outline-variant/20 pt-6 sm:mt-8 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
-        <div className="flex items-center gap-3">
-          <span className="material-symbols-outlined text-secondary" aria-hidden>
-            electric_bolt
-          </span>
-          <span className="text-sm font-bold tracking-tight text-primary">AI-Reflection Ready</span>
+      <div
+        className={`mt-6 flex flex-col gap-4 border-t border-outline-variant/20 pt-6 transition-opacity duration-500 sm:mt-8 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between ${
+          verseEnrichmentStatus === 'pending' ? 'opacity-90' : 'opacity-100'
+        }`}
+        aria-busy={verseEnrichmentStatus === 'pending'}
+      >
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+          <div className="flex items-center gap-3">
+            <span className="material-symbols-outlined text-secondary" aria-hidden>
+              electric_bolt
+            </span>
+            <span className="text-sm font-bold tracking-tight text-primary">AI-Reflection Ready</span>
+          </div>
+          {verseEnrichmentStatus === 'pending' ? (
+            <span className="text-[10px] font-medium uppercase tracking-wider text-on-surface-variant/70">
+              Syncing ayah &amp; audio in background…
+            </span>
+          ) : verseEnrichmentStatus === 'unavailable' ? (
+            <span className="text-[10px] font-medium text-on-surface-variant/70">Using offline ayah text</span>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-4 sm:gap-6">
           <button
@@ -112,6 +128,7 @@ export function DailyAyahBlock({ ayah, className = '' }: DailyAyahBlockProps) {
           </button>
           {playErr ? <p className="w-full text-xs text-error sm:w-auto">{playErr}</p> : null}
           <Link
+            prefetch="viewport"
             to={focusHref}
             className="flex items-center gap-2 text-sm font-bold text-primary/80 hover:text-primary hover:underline"
           >
@@ -121,12 +138,14 @@ export function DailyAyahBlock({ ayah, className = '' }: DailyAyahBlockProps) {
             Focus — Ayah reflection
           </Link>
           <Link
+            prefetch="viewport"
             to={readerHref}
             className="text-sm font-bold text-primary/70 hover:text-primary hover:underline"
           >
             Open in reader
           </Link>
           <Link
+            prefetch="viewport"
             to="/insights"
             className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_22px_rgba(212,175,55,0.45)] ring-2 ring-accent-gold/35 transition hover:shadow-[0_0_28px_rgba(212,175,55,0.55)] hover:ring-accent-gold/55 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >

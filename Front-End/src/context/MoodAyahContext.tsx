@@ -2,6 +2,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import {
   createContext,
+  startTransition,
   useCallback,
   useContext,
   useEffect,
@@ -9,40 +10,39 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { isAxiosError } from 'axios'
 import { useAppSession } from '../hooks/useAppSession'
 import { apiClient } from '../lib/apiClient'
-import type { ChatResponse, HistoryMessage } from '../lib/apiTypes'
-import { asarE2eTrace } from '../lib/asarE2eTrace'
-import { dailyAyahFromChatResponse } from '../lib/dailyAyahFromChat'
-import { type DailyAyah, findAyahForMood, getDailyAyahForToday } from '../lib/mockData'
+import type { HistoryMessage } from '../lib/apiTypes'
+import { fetchStreakSnapshotDeduped, fetchVerseBundleDeduped } from '../lib/engineDataCache'
+import { type DailyAyah, getColdStartDailyAyah } from '../lib/mockData'
+import { scheduleIdleTask } from '../lib/scheduleIdle'
+
+/** Ayah text/audio enrichment from GET /verse (idle-scheduled so the shell paints first). */
+export type VerseEnrichmentStatus = 'pending' | 'ready' | 'unavailable'
 
 type MoodAyahContextValue = {
   displayAyah: DailyAyah
   setDisplayAyah: (ayah: DailyAyah) => void
-  runMoodSearch: (mood: string) => void
-  moodLoading: boolean
-  aiReflection: string | null
-  clearAiReflection: () => void
-  /** Streak from API (chat, mark complete, or dashboard hydrate). */
+  /** Streak from API (mark complete or dashboard hydrate — not from chat). */
   streakCount: number
   syncStreakCount: (n: number) => void
   /** Session chat rows from GET /history (refreshed after each successful /chat). */
   sessionUserMessages: number
   sessionTotalMessages: number
   refreshSessionChatStats: () => Promise<void>
+  /** Engine GET /verse for the focus ayah: pending until idle prefetch finishes. */
+  verseEnrichmentStatus: VerseEnrichmentStatus
 }
 
 const MoodAyahContext = createContext<MoodAyahContextValue | null>(null)
 
 export function MoodAyahProvider({ children }: { children: ReactNode }) {
   const { sessionId } = useAppSession()
-  const [displayAyah, setDisplayAyah] = useState<DailyAyah>(() => getDailyAyahForToday())
-  const [moodLoading, setMoodLoading] = useState(false)
-  const [aiReflection, setAiReflection] = useState<string | null>(null)
+  const [displayAyah, setDisplayAyah] = useState<DailyAyah>(() => getColdStartDailyAyah())
   const [streakCount, setStreakCount] = useState(0)
   const [sessionUserMessages, setSessionUserMessages] = useState(0)
   const [sessionTotalMessages, setSessionTotalMessages] = useState(0)
+  const [verseEnrichmentStatus, setVerseEnrichmentStatus] = useState<VerseEnrichmentStatus>('pending')
 
   const syncStreakCount = useCallback((n: number) => {
     setStreakCount(typeof n === 'number' && !Number.isNaN(n) ? n : 0)
@@ -63,80 +63,76 @@ export function MoodAyahProvider({ children }: { children: ReactNode }) {
     void refreshSessionChatStats()
   }, [refreshSessionChatStats])
 
-  const clearAiReflection = useCallback(() => setAiReflection(null), [])
+  /** Streak snapshot: starts immediately (deduped); UI update is non-urgent. */
+  useEffect(() => {
+    let cancelled = false
+    void fetchStreakSnapshotDeduped(sessionId)
+      .then((snap) => {
+        if (cancelled) return
+        startTransition(() => syncStreakCount(snap.updated_streak_count))
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [sessionId, displayAyah.surahId, displayAyah.ayahNumber, syncStreakCount])
 
-  const runMoodSearch = useCallback(
-    async (mood: string) => {
-      const trimmed = mood.trim()
-      if (!trimmed || moodLoading) return
-      setMoodLoading(true)
-      setAiReflection(null)
-      try {
-        asarE2eTrace('STEP 2 — POST /chat request', {
-          session_id: sessionId,
-          message_len: trimmed.length,
-        })
-        const { data } = await apiClient.post<ChatResponse>('/chat', {
-          session_id: sessionId,
-          message: trimmed,
-        })
-        asarE2eTrace('STEP 2–3 — POST /chat response', {
-          reply_len: data.ai_reply?.length,
-          updated_streak_count: data.updated_streak_count,
-          verse_key: data.verse_key,
-          has_audio: Boolean(data.audio_url),
-          uthmani_len: data.verse_text_uthmani?.length ?? 0,
-        })
-        setAiReflection(data.ai_reply)
-        syncStreakCount(data.updated_streak_count)
-        const moodAyah = findAyahForMood(trimmed)
-        setDisplayAyah(dailyAyahFromChatResponse(data, moodAyah))
-        void refreshSessionChatStats()
-      } catch (e) {
-        let msg = ''
-        if (isAxiosError(e)) {
-          const det = e.response?.data && typeof e.response.data === 'object' && 'detail' in e.response.data
-            ? (e.response.data as { detail: unknown }).detail
-            : undefined
-          if (typeof det === 'string') msg = det
-          else if (Array.isArray(det)) msg = det.map((x) => JSON.stringify(x)).join('; ')
-        }
-        setAiReflection(
-          msg ||
-            'Could not reach ASAR Engine. Start the API on port 8000 and check CORS (see VITE_API_BASE_URL).',
-        )
-      } finally {
-        setMoodLoading(false)
-      }
-    },
-    [moodLoading, sessionId, syncStreakCount, refreshSessionChatStats],
-  )
+  /** Verse bundle: idle after paint so Daily ASAR + layout stay responsive; merges when ready. */
+  useEffect(() => {
+    let cancelled = false
+    const verseKey = `${displayAyah.surahId}:${displayAyah.ayahNumber}`
+    startTransition(() => setVerseEnrichmentStatus('pending'))
+    const h = scheduleIdleTask(
+      () => {
+        void fetchVerseBundleDeduped(verseKey)
+          .then((bundle) => {
+            if (cancelled) return
+            const ar = bundle.verse_text_uthmani?.trim()
+            const tr = bundle.verse_translation?.trim()
+            const au = bundle.audio_url?.trim()
+            startTransition(() => {
+              if (ar || tr || au) {
+                setDisplayAyah((prev) => ({
+                  ...prev,
+                  arabic: ar || prev.arabic,
+                  translation: tr || prev.translation,
+                  audioUrl: au || prev.audioUrl,
+                }))
+              }
+              setVerseEnrichmentStatus('ready')
+            })
+          })
+          .catch(() => {
+            if (!cancelled) startTransition(() => setVerseEnrichmentStatus('unavailable'))
+          })
+      },
+      { timeoutMs: 1600, delayMs: 0 },
+    )
+    return () => {
+      cancelled = true
+      h.cancel()
+    }
+  }, [sessionId, displayAyah.surahId, displayAyah.ayahNumber])
 
   const value = useMemo(
     () => ({
       displayAyah,
       setDisplayAyah,
-      runMoodSearch,
-      moodLoading,
-      aiReflection,
-      clearAiReflection,
       streakCount,
       syncStreakCount,
       sessionUserMessages,
       sessionTotalMessages,
       refreshSessionChatStats,
+      verseEnrichmentStatus,
     }),
     [
-      aiReflection,
-      clearAiReflection,
       displayAyah,
-      moodLoading,
-      runMoodSearch,
       refreshSessionChatStats,
       sessionTotalMessages,
       sessionUserMessages,
       streakCount,
       syncStreakCount,
+      verseEnrichmentStatus,
     ],
   )
 

@@ -1,8 +1,7 @@
 import { useCallback } from 'react'
 
-import { apiClient } from '../lib/apiClient'
 import { asarE2eTrace } from '../lib/asarE2eTrace'
-import type { VerseBundleResponse } from '../lib/apiTypes'
+import { fetchVerseBundleDeduped } from '../lib/engineDataCache'
 
 export type RecitationRef = {
   surahId: number
@@ -22,9 +21,7 @@ export function useSound() {
     let url = ref.audioUrl?.trim() || null
     try {
       if (!url) {
-        const { data } = await apiClient.get<VerseBundleResponse>('/verse', {
-          params: { verse_key: verseKey },
-        })
+        const data = await fetchVerseBundleDeduped(verseKey)
         url = data.audio_url?.trim() || null
         if (import.meta.env.DEV && !url) {
           console.debug('[useSound] No audio URL from API for', verseKey)

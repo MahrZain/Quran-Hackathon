@@ -132,6 +132,12 @@ export const STREAK_CONSTELLATION_DAYS: StreakConstellationDay[] = [
   },
 ]
 
+/** Cold start: Ash-Sharh 94:5 (empty streak / new account). */
+export function getColdStartDailyAyah(): DailyAyah {
+  const v = dailyVerses.find((x) => x.surahId === 94 && x.ayahNumber === 5)
+  return v ?? dailyVerses[0]!
+}
+
 export function getDailyAyahForToday(verses: DailyAyah[] = dailyVerses): DailyAyah {
   if (verses.length === 0) {
     throw new Error('dailyVerses must not be empty')

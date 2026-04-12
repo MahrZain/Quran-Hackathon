@@ -7,6 +7,28 @@ export type ChatResponse = {
   audio_url?: string | null
 }
 
+export type ChatTurnPayload = {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export type ChatVerseCard = {
+  ayah: string
+  reference: string
+  translation: string
+}
+
+export type ChatMessageRequestPayload = {
+  session_id: string
+  history: ChatTurnPayload[]
+  message: string
+}
+
+export type ChatMessageResponse = {
+  answer: string
+  verses: ChatVerseCard[]
+}
+
 export type HistoryMessage = {
   role: 'user' | 'assistant'
   content: string
@@ -33,6 +55,8 @@ export type TokenResponse = {
 export type UserMe = {
   id: number
   email: string
+  /** Server-owned session for chat/streak/history when authenticated. */
+  asar_session_id: string
 }
 
 export type VerseBundleResponse = {

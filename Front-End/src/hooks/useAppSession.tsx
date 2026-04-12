@@ -1,8 +1,9 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 
+import { useAuth } from '../context/AuthContext'
 import { SESSION_STORAGE_KEY } from '../lib/apiClient'
 
-function readOrCreateSessionId(): string {
+function readOrCreateAnonymousSessionId(): string {
   try {
     let id = localStorage.getItem(SESSION_STORAGE_KEY)
     if (!id) {
@@ -22,7 +23,24 @@ type AppSessionValue = {
 const AppSessionContext = createContext<AppSessionValue | null>(null)
 
 export function AppSessionProvider({ children }: { children: ReactNode }) {
-  const [sessionId] = useState(() => readOrCreateSessionId())
+  const { user } = useAuth()
+  const [sessionId, setSessionId] = useState(() => readOrCreateAnonymousSessionId())
+
+  useEffect(() => {
+    if (user?.asar_session_id) {
+      const sid = user.asar_session_id
+      try {
+        if (localStorage.getItem(SESSION_STORAGE_KEY) !== sid) {
+          localStorage.setItem(SESSION_STORAGE_KEY, sid)
+        }
+      } catch {
+        /* ignore */
+      }
+      setSessionId(sid)
+      return
+    }
+    setSessionId(readOrCreateAnonymousSessionId())
+  }, [user?.asar_session_id, user?.id])
 
   const value = useMemo(() => ({ sessionId }), [sessionId])
 

@@ -6,7 +6,7 @@ import { StreakConstellation } from '../components/StreakConstellation'
 import { useMoodAyah } from '../context/MoodAyahContext'
 import { useAppSession } from '../hooks/useAppSession'
 import { apiClient } from '../lib/apiClient'
-import type { StreakResponse, StreakSnapshot } from '../lib/apiTypes'
+import type { StreakResponse } from '../lib/apiTypes'
 import { asarE2eTrace } from '../lib/asarE2eTrace'
 import { constellationDaysFromStreak } from '../lib/streakHelpers'
 
@@ -27,7 +27,9 @@ export function DashboardPage() {
   const markSavedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const qfToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const flowPercent = Math.min(100, Math.round(18 + streakCount * 12))
+  /** 0 streak = cold start ring at 0%; then scale from a small baseline for returning users. */
+  const flowPercent =
+    streakCount === 0 ? 0 : Math.min(100, Math.round(18 + streakCount * 12))
   const engagementPoints = sessionUserMessages * 12 + streakCount * 20
   const streakSubtitle =
     streakCount === 0
@@ -35,32 +37,6 @@ export function DashboardPage() {
       : streakCount === 1
         ? '1 day streak'
         : `${streakCount} day streak`
-
-  useEffect(() => {
-    let cancelled = false
-    const run = async () => {
-      try {
-        asarE2eTrace('STEP 5 — GET /streak/{session_id} (chat counts from MoodAyah /history)', {
-          session_id: sessionId,
-        })
-        const { data: streakRes } = await apiClient.get<StreakSnapshot>(`/streak/${sessionId}`)
-        if (cancelled) return
-        syncStreakCount(streakRes.updated_streak_count)
-        asarE2eTrace('STEP 5 — streak hydrated from DB', {
-          updated_streak_count: streakRes.updated_streak_count,
-          daily_flow_ring_percent: Math.min(100, Math.round(18 + streakRes.updated_streak_count * 12)),
-        })
-      } catch (e) {
-        if (!cancelled) {
-          asarE2eTrace('STEP 5 — hydrate failed (API down or unauthorized)', { error: String(e) })
-        }
-      }
-    }
-    void run()
-    return () => {
-      cancelled = true
-    }
-  }, [sessionId, syncStreakCount])
 
   useEffect(() => {
     setConstellationDays(constellationDaysFromStreak(streakCount))
@@ -167,6 +143,7 @@ export function DashboardPage() {
                 <p className="text-center text-xs font-medium text-primary/90">Streak updated in your ledger.</p>
               )}
               <Link
+                prefetch="viewport"
                 to={`/quran/${displayAyah.surahId}?ayah=${displayAyah.ayahNumber}`}
                 className="mt-2 text-center text-xs font-semibold text-primary/85 hover:text-primary hover:underline"
               >

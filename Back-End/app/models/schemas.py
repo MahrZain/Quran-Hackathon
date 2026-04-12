@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
@@ -9,6 +10,34 @@ from app.models.domain import MessageRole
 class ChatRequest(BaseModel):
     session_id: UUID
     message: str = Field(..., min_length=1, max_length=8000)
+
+
+class ChatTurnIn(BaseModel):
+    """One row in a multi-turn client payload (not persisted until echoed by the server)."""
+
+    role: Literal["user", "assistant"]
+    content: str = Field(..., min_length=1, max_length=8000)
+
+
+class ChatMessageRequest(BaseModel):
+    """REST-grounded RAG chat: optional `history` for multi-turn; server persists the new `message` and assistant `answer`."""
+
+    session_id: UUID
+    history: list[ChatTurnIn] = Field(default_factory=list, max_length=48)
+    message: str = Field(..., min_length=1, max_length=8000)
+
+
+class ChatVerseCard(BaseModel):
+    ayah: str
+    reference: str
+    translation: str
+
+
+class ChatMessageResponse(BaseModel):
+    """REST-grounded reply + ayah cards from Quran Foundation HTTP APIs (no streak side effects)."""
+
+    answer: str
+    verses: list[ChatVerseCard] = Field(default_factory=list)
 
 
 class ChatResponse(BaseModel):
@@ -88,5 +117,6 @@ class TokenResponse(BaseModel):
 class UserMe(BaseModel):
     id: int
     email: str
+    asar_session_id: str
 
     model_config = {"from_attributes": True}

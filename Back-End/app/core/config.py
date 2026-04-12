@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     quran_api_key: str = ""
     quran_translation_resource_id: int = 85
     quran_default_verse_key: str = "1:1"
+    quran_ai_max_verses: int = 3
     quran_user_activity_url: str = ""
     # When the verse API omits `audio` (common on api.quran.com), build URL from this template.
     # {block} = 6 digits, surah padded to 3 + ayah padded to 3 (e.g. 094005 for 94:5). Public CDN allows * origin.
@@ -33,10 +34,18 @@ class Settings(BaseSettings):
     quran_client_secret: str = ""
     # Optional full authorize URL; if empty, derived from quran_oauth_token_url (…/oauth2/token → …/oauth2/auth)
     quran_oauth_authorize_url: str = ""
+    # Space-separated scopes for Continue with Quran.com — must match your Request Access client (invalid_scope if not).
+    # Default matches https://api-docs.quran.foundation/docs/tutorials/oidc/user-apis-quickstart/ “Common scopes”.
+    # If Quran Foundation enabled extra scopes for your app (e.g. activity_day), set QURAN_OAUTH_AUTHORIZE_SCOPES in .env.
+    quran_oauth_authorize_scopes: str = "openid offline_access user streak"
     quran_oauth_redirect_uri: str = "http://127.0.0.1:8000/api/v1/auth/callback"
     quran_user_api_base_url: str = "https://apis-prelive.quran.foundation"
     # POST target for activity / streak sync (override if Foundation path differs)
     quran_activity_sync_post_url: str = ""
+    # POST /auth/v1/activity-days body (see Quran Foundation “Add/update activity day” docs)
+    quran_activity_mushaf_id: int = 4  # 4 = UthmaniHafs per api-docs.quran.foundation
+    quran_activity_seconds_default: int = 60  # required >= 1; nominal reading seconds for “mark complete”
+    quran_activity_timezone: str = "Etc/UTC"  # IANA tz for x-timezone (day boundaries / streaks)
     # Browser origin for post–Quran OAuth return (redirects to {this}/welcome/oauth#asar_token=…)
     frontend_after_oauth_url: str = "http://localhost:5173"
     # Demo “armed” User API tokens (optional; injected on POST /auth/demo)

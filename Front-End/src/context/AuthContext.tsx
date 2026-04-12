@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react'
 import { apiClient, SESSION_STORAGE_KEY } from '../lib/apiClient'
+import { wipeAsarSessionScopeFromBrowser } from '../lib/cleanSlate'
 import { asarE2eTrace } from '../lib/asarE2eTrace'
 import type { TokenResponse, UserMe } from '../lib/apiTypes'
 import { clearAccessToken, setAccessToken, getAccessToken } from '../lib/authStorage'
@@ -51,6 +52,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data } = await apiClient.get<UserMe>('/auth/me')
       setUser(data)
+      try {
+        if (data.asar_session_id) {
+          localStorage.setItem(SESSION_STORAGE_KEY, data.asar_session_id)
+        }
+      } catch {
+        /* ignore */
+      }
     } catch {
       setUser(null)
       clearAccessToken()
@@ -91,6 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refreshUser])
 
   const logout = useCallback(() => {
+    wipeAsarSessionScopeFromBrowser()
     clearAccessToken()
     setUser(null)
   }, [])

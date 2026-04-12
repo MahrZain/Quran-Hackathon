@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import functools
+import json
 import logging
+import re
 import time
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -12,7 +16,114 @@ from app.core.config import Settings, get_settings
 
 log = logging.getLogger(__name__)
 
-# When Foundation prelive/live Content returns 404 for a verse+translation combo, public v4 matches api.quran.com.
+_VERSE_KEY_RE = re.compile(r"^\d{1,3}:\d{1,3}$")
+
+_MAX_AYAH_FALLBACK = 286  # safe upper bound for validation before HTTP fetch
+
+
+@functools.lru_cache(maxsize=1)
+def _surah_alias_to_surah_id() -> dict[str, int]:
+    """
+    Lowercased transliteration / slug -> surah number (1–114), from bundled Quran.com chapter names.
+    """
+    m: dict[str, int] = {}
+    path = Path(__file__).resolve().parent.parent / "data" / "surah_name_simple.json"
+    try:
+        raw: list[dict[str, Any]] = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as e:
+        log.warning("surah_name_simple.json missing or invalid (%s); name-based verse hints limited", e)
+        return {"nas": 114, "annas": 114, "an-nas": 114, "an nas": 114, "fatihah": 1, "fatiha": 1, "al-fatihah": 1}
+
+    for row in raw:
+        sid = int(row["id"])
+        name = (row.get("n") or "").strip()
+        if not name:
+            continue
+        variants: set[str] = set()
+        low = name.lower()
+        no_apos = low.replace("'", "").replace("’", "").replace("\u2019", "")
+        for base in (low, no_apos):
+            variants.add(base)
+            variants.add(base.replace(" ", ""))
+            variants.add(re.sub(r"[\s']+", "-", base.strip()))
+        for v in list(variants):
+            v = v.strip("- ")
+            if len(v) < 2:
+                continue
+            for pref in ("al-", "an-", "ar-", "as-", "ad-", "at-", "ash-"):
+                if v.startswith(pref) and len(v) > len(pref) + 1:
+                    variants.add(v[len(pref) :])
+        for v in variants:
+            v2 = v.strip("- ")
+            if len(v2) >= 2 and v2 not in m:
+                m[v2] = sid
+    return m
+
+
+def verse_keys_from_natural_language_query(text: str) -> list[str]:
+    """
+    Resolve explicit surah:ayah references from free text (e.g. 'sura nas ayat 1', '114:1', '2:255')
+    without calling /search. Order: numeric colon pairs, surah-N ayah-M, then surah NAME ayah-M.
+    """
+    t = (text or "").strip()
+    if len(t) < 2:
+        return []
+    al = _surah_alias_to_surah_id()
+    found: list[str] = []
+    seen: set[str] = set()
+
+    def add_key(surah: int, ayah: int) -> None:
+        if not (1 <= surah <= 114) or not (1 <= ayah <= _MAX_AYAH_FALLBACK):
+            return
+        vk = f"{surah}:{ayah}"
+        if vk in seen:
+            return
+        if not _VERSE_KEY_RE.match(vk):
+            return
+        seen.add(vk)
+        found.append(vk)
+
+    for m in re.finditer(r"\b(\d{1,3})\s*:\s*(\d{1,3})\b", t):
+        add_key(int(m.group(1)), int(m.group(2)))
+
+    num_pat = re.compile(
+        r"\b(?:surah|sura|surat|chapter)\s*#?\s*(\d{1,3})\s*[,،]?\s*(?:ayat|ayah|verse|ayet|a\.?)\s*#?\s*(\d{1,3})\b",
+        re.I,
+    )
+    for m in num_pat.finditer(t):
+        add_key(int(m.group(1)), int(m.group(2)))
+
+    name_pat = re.compile(
+        r"\b(?:surah|sura|surat|chapter)\s+([a-zA-Z'’\u2019\-\s]{2,60}?)\s+(?:ayat|ayah|verse|ayet)\s*#?\s*(\d{1,3})\b",
+        re.I,
+    )
+    for m in name_pat.finditer(t):
+        frag = re.sub(r"\s+", " ", m.group(1).strip().lower())
+        frag = frag.strip("'’\u2019")
+        ay = int(m.group(2))
+        parts = [p for p in frag.split() if p]
+        candidates: list[str] = [frag, frag.replace(" ", "-"), frag.replace(" ", "")]
+        if parts:
+            candidates.append(parts[-1])
+            if len(parts) >= 2:
+                candidates.append(f"{parts[-2]} {parts[-1]}")
+        sid: int | None = None
+        for cand in candidates:
+            c = cand.lower().strip("- ")
+            if len(c) < 2:
+                continue
+            sid = al.get(c)
+            if sid is None:
+                sid = al.get(re.sub(r"^(al|an|ar|as|ad|at|ash)-", "", c))
+            if sid is not None:
+                break
+        if sid is not None:
+            add_key(sid, ay)
+
+    return found
+
+
+# When Foundation prelive/live Content returns 404 or short lists, public v4 matches api.quran.com.
 _PUBLIC_CONTENT_API_V4 = "https://api.quran.com/api/v4"
 
 _client: httpx.AsyncClient | None = None
@@ -21,6 +132,11 @@ _oauth_token_cache: str | None = None
 _oauth_token_expires_monotonic: float = 0.0
 # After token 401/403, skip hitting the OAuth server again for a few minutes (many verse fetches per chat).
 _oauth_skip_until_monotonic: float = 0.0
+
+
+def _content_api_public_fallback_eligible(settings: Settings) -> bool:
+    b = (settings.quran_api_base_url or "").strip().rstrip("/").lower()
+    return bool(b) and not b.endswith("api.quran.com/api/v4")
 
 
 def set_http_client(client: httpx.AsyncClient | None) -> None:
@@ -146,7 +262,7 @@ async def fetch_verse_text(verse_key: str, settings: Settings | None = None) -> 
     }
     headers = await _auth_headers(s)
     r = await client.get(url, params=params, headers=headers, timeout=30.0)
-    if r.status_code == 404 and not s.quran_api_base_url.rstrip("/").endswith("api.quran.com/api/v4"):
+    if r.status_code == 404 and _content_api_public_fallback_eligible(s):
         pub = f"{_PUBLIC_CONTENT_API_V4}/verses/by_key/{verse_key}"
         r = await client.get(pub, params=params, headers={}, timeout=30.0)
     r.raise_for_status()
@@ -169,7 +285,7 @@ async def fetch_verse_uthmani_and_translation(verse_key: str, settings: Settings
     }
     headers = await _auth_headers(s)
     r = await client.get(url, params=params, headers=headers, timeout=30.0)
-    if r.status_code == 404 and not s.quran_api_base_url.rstrip("/").endswith("api.quran.com/api/v4"):
+    if r.status_code == 404 and _content_api_public_fallback_eligible(s):
         log.debug(
             "verse by_key 404 on configured base; retrying public api.quran.com for %s",
             verse_key,
@@ -188,12 +304,59 @@ async def fetch_tafsir_or_translation(verse_key: str, settings: Settings | None 
     url = f"{s.quran_api_base_url.rstrip('/')}/quran/translations/{s.quran_translation_resource_id}"
     params = {"verse_key": verse_key}
     r = await client.get(url, params=params, headers=await _auth_headers(s), timeout=30.0)
+    if r.status_code == 404 and _content_api_public_fallback_eligible(s):
+        pub = f"{_PUBLIC_CONTENT_API_V4}/quran/translations/{s.quran_translation_resource_id}"
+        r = await client.get(pub, params=params, headers={}, timeout=30.0)
     r.raise_for_status()
     data = r.json()
     trs = data.get("translations") or []
     if not trs:
         return ""
     return trs[0].get("text") or ""
+
+
+async def search_verse_keys(query: str, *, limit: int = 8, settings: Settings | None = None) -> list[str]:
+    """
+    Deterministic search against the configured Quran Content API (v4 /search).
+    Returns unique verse_key strings (e.g. 94:5) in API order.
+    """
+    q = (query or "").strip()
+    if len(q) < 2:
+        return []
+    lim = max(1, min(limit, 20))
+    s = settings or get_settings()
+    client = _client_or_raise()
+    base = s.quran_api_base_url.rstrip("/")
+    url = f"{base}/search"
+    params = {"q": q, "size": str(lim)}
+    headers = await _auth_headers(s)
+    r = await client.get(url, params=params, headers=headers, timeout=30.0)
+    # Prelive /search sometimes returns 5xx; public v4 search is stable for RAG grounding.
+    if _content_api_public_fallback_eligible(s) and r.status_code in (
+        404,
+        500,
+        502,
+        503,
+        504,
+    ):
+        log.debug(
+            "Quran search primary returned HTTP %s; retrying %s/search",
+            r.status_code,
+            _PUBLIC_CONTENT_API_V4,
+        )
+        r = await client.get(f"{_PUBLIC_CONTENT_API_V4}/search", params=params, headers={}, timeout=30.0)
+    r.raise_for_status()
+    body = r.json()
+    out: list[str] = []
+    for item in (body.get("search") or {}).get("results") or []:
+        if not isinstance(item, dict):
+            continue
+        vk = item.get("verse_key")
+        if isinstance(vk, str) and _VERSE_KEY_RE.match(vk.strip()) and vk.strip() not in out:
+            out.append(vk.strip())
+        if len(out) >= lim:
+            break
+    return out
 
 
 def _absolute_audio_url(maybe_relative: str, settings: Settings) -> str | None:
@@ -295,7 +458,11 @@ async def fetch_chapters_catalog(settings: Settings | None = None) -> list[dict[
     s = settings or get_settings()
     client = _client_or_raise()
     url = f"{s.quran_api_base_url.rstrip('/')}/chapters?language=en"
-    r = await client.get(url, headers=await _auth_headers(s), timeout=30.0)
+    headers = await _auth_headers(s)
+    r = await client.get(url, headers=headers, timeout=30.0)
+    if r.status_code == 404 and _content_api_public_fallback_eligible(s):
+        log.debug("chapters list 404 on configured Content base; using public api.quran.com")
+        r = await client.get(f"{_PUBLIC_CONTENT_API_V4}/chapters?language=en", headers={}, timeout=30.0)
     r.raise_for_status()
     data = r.json()
     rows: list[dict[str, Any]] = []
@@ -307,6 +474,23 @@ async def fetch_chapters_catalog(settings: Settings | None = None) -> list[dict[
         except (KeyError, TypeError, ValueError):
             continue
     rows.sort(key=lambda x: x["id"])
+    if len(rows) < 114 and _content_api_public_fallback_eligible(s):
+        try:
+            r2 = await client.get(f"{_PUBLIC_CONTENT_API_V4}/chapters?language=en", headers={}, timeout=30.0)
+            r2.raise_for_status()
+            alt: list[dict[str, Any]] = []
+            for ch in r2.json().get("chapters") or []:
+                if not isinstance(ch, dict):
+                    continue
+                try:
+                    alt.append(_chapter_summary_from_api(ch))
+                except (KeyError, TypeError, ValueError):
+                    continue
+            alt.sort(key=lambda x: x["id"])
+            if len(alt) > len(rows):
+                rows = alt
+        except Exception as e:
+            log.debug("chapters catalog public merge skipped: %s", e)
     return rows
 
 
@@ -316,7 +500,18 @@ async def fetch_chapter_detail(chapter_id: int, settings: Settings | None = None
     s = settings or get_settings()
     client = _client_or_raise()
     url = f"{s.quran_api_base_url.rstrip('/')}/chapters/{chapter_id}?language=en"
-    r = await client.get(url, headers=await _auth_headers(s), timeout=30.0)
+    headers = await _auth_headers(s)
+    r = await client.get(url, headers=headers, timeout=30.0)
+    if r.status_code == 404 and _content_api_public_fallback_eligible(s):
+        log.debug(
+            "chapter %s 404 on configured Content base; using public api.quran.com",
+            chapter_id,
+        )
+        r = await client.get(
+            f"{_PUBLIC_CONTENT_API_V4}/chapters/{chapter_id}?language=en",
+            headers={},
+            timeout=30.0,
+        )
     r.raise_for_status()
     ch = r.json().get("chapter")
     if not isinstance(ch, dict):

@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { QuranAyahText } from '../components/QuranAyahText'
 import { apiClient } from '../lib/apiClient'
 import type { ChapterSummary, VerseBundleResponse } from '../lib/apiTypes'
+import { fetchVerseBundleDeduped } from '../lib/engineDataCache'
 
 const LAST_READ_KEY = 'asar_last_read'
 
@@ -82,9 +83,8 @@ export function ReaderPage() {
     let cancelled = false
     setLoading(true)
     setErr(null)
-    void apiClient
-      .get<VerseBundleResponse>('/verse', { params: { verse_key: verseKey } })
-      .then(({ data }) => {
+    void fetchVerseBundleDeduped(verseKey)
+      .then((data) => {
         if (!cancelled) setBundle(data)
       })
       .catch(() => {

@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { QuranAyahText } from '../components/QuranAyahText'
 import { useMoodAyah } from '../context/MoodAyahContext'
-import { apiClient } from '../lib/apiClient'
 import type { VerseBundleResponse } from '../lib/apiTypes'
+import { fetchVerseBundleDeduped } from '../lib/engineDataCache'
 
 export function FocusPage() {
   const [sp] = useSearchParams()
@@ -24,9 +24,8 @@ export function FocusPage() {
     let cancelled = false
     setLoading(true)
     setErr(null)
-    void apiClient
-      .get<VerseBundleResponse>('/verse', { params: { verse_key: verseKey } })
-      .then(({ data }) => {
+    void fetchVerseBundleDeduped(verseKey)
+      .then((data) => {
         if (!cancelled) setBundle(data)
       })
       .catch(() => {

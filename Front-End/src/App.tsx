@@ -2,6 +2,7 @@ import { LazyMotion, domAnimation } from 'framer-motion'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { RedirectIfAuthed, RequireAppAccess } from './components/AuthRouteGuards'
 import { AppShell } from './layouts/AppShell'
+import { ChatPage } from './pages/ChatPage'
 import { CommunityPage } from './pages/CommunityPage'
 import { ConfigPage } from './pages/ConfigPage'
 import { DashboardPage } from './pages/DashboardPage'
@@ -44,6 +45,7 @@ export function App() {
           <Route path="/quran/:surahId" element={<ReaderPage />} />
           <Route path="/focus" element={<FocusPage />} />
           <Route path="/habits" element={<HabitsPage />} />
+          <Route path="/chat" element={<ChatPage />} />
           <Route path="/mentor" element={<MentorPage />} />
           <Route path="/insights" element={<InsightsPage />} />
           <Route path="/settings" element={<SettingsPage />} />

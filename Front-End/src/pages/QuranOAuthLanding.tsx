@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { wipeAsarSessionScopeFromBrowser } from '../lib/cleanSlate'
 import { setAccessToken } from '../lib/authStorage'
 
 /** Handles redirect from Back-End after Quran.com OAuth (`#asar_token=…`). */
@@ -20,6 +21,7 @@ export function QuranOAuthLanding() {
       setErr('missing_token')
       return
     }
+    wipeAsarSessionScopeFromBrowser()
     setAccessToken(token)
     window.history.replaceState(null, '', window.location.pathname)
     navigate('/', { replace: true })

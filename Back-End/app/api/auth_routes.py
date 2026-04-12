@@ -8,6 +8,7 @@ import secrets
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
+from uuid import uuid4
 
 import httpx
 import jwt
@@ -75,39 +76,71 @@ def _ensure_demo_user(db: Session) -> User:
 async def _hydrate_demo_user_quran_tokens(db: Session, user: User, s: Settings) -> None:
     """
     Prefer a live OAuth refresh so the demo row gets a fresh access token; fall back to static .env values.
+    If DEMO_QURAN_ACCESS_TOKEN is a JWT that is not yet expired, skip calling Hydra (avoids noisy 400s and
+    keeps demo login working while refresh tokens are rotated on prelive).
+    401 on refresh is expected when DEMO_QURAN_REFRESH_TOKEN is rotated or revoked on prelive — we then copy .env.
     While the app runs, streak sync also refreshes on 401 (quran_user_service.sync_activity_to_quran_foundation).
     """
     ref_env = s.demo_quran_refresh_token.strip()
     acc_env = s.demo_quran_access_token.strip()
+    acc_state = quran_user_service.classify_quran_access_token(acc_env)
     db_refresh = (user.quran_refresh_token or "").strip()
+    live_refresh_ok = False
+
+    if acc_env and acc_state == "fresh":
+        user.quran_access_token = acc_env
+        if ref_env:
+            user.quran_refresh_token = ref_env
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        log.info("demo user Quran tokens: DEMO_QURAN_ACCESS_TOKEN still valid (JWT); skipped OAuth refresh.")
+        return
 
     async def try_refresh(rt: str, source: str) -> bool:
+        nonlocal live_refresh_ok
+        if not rt:
+            return False
         try:
             refreshed = await quran_user_service.refresh_quran_tokens(rt, s)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 401:
+                log.info(
+                    "demo Quran OAuth refresh 401 (%s) — token rejected; will fall back to DEMO_QURAN_* in .env if set.",
+                    source,
+                )
+            else:
+                log.warning("demo Quran token refresh HTTP error (%s): %s", source, e)
+            return False
         except Exception as e:
             log.warning("demo Quran token refresh failed (%s): %s", source, e)
             return False
         user.quran_access_token = refreshed["access_token"]
         if refreshed.get("refresh_token"):
             user.quran_refresh_token = str(refreshed["refresh_token"])
+        live_refresh_ok = True
         return True
 
     if ref_env and await try_refresh(ref_env, "DEMO_QURAN_REFRESH_TOKEN"):
         db.add(user)
         db.commit()
         db.refresh(user)
+        log.info("demo user Quran tokens renewed via OAuth refresh (DEMO_QURAN_REFRESH_TOKEN).")
         return
 
-    if not ref_env and db_refresh and await try_refresh(db_refresh, "stored_user_refresh"):
+    if not ref_env and db_refresh and await try_refresh(db_refresh, "demo_user_db_refresh"):
         db.add(user)
         db.commit()
         db.refresh(user)
+        log.info("demo user Quran tokens renewed via OAuth refresh (stored DB refresh token).")
         return
 
-    if ref_env and db_refresh and db_refresh != ref_env and await try_refresh(db_refresh, "stored_user_after_env_fail"):
+    # Same refresh string as env was already attempted above — do not POST twice to Hydra.
+    if ref_env and db_refresh and db_refresh != ref_env and await try_refresh(db_refresh, "demo_user_db_refresh_after_env"):
         db.add(user)
         db.commit()
         db.refresh(user)
+        log.info("demo user Quran tokens renewed via OAuth refresh (DB refresh differed from env).")
         return
 
     if acc_env:
@@ -117,6 +150,19 @@ async def _hydrate_demo_user_quran_tokens(db: Session, user: User, s: Settings) 
     db.add(user)
     db.commit()
     db.refresh(user)
+    if not live_refresh_ok and (acc_env or ref_env):
+        if acc_state == "expired":
+            log.warning(
+                "demo user: DEMO_QURAN_ACCESS_TOKEN is an expired JWT and Hydra refresh did not succeed — "
+                "Quran activity sync may fail. Use the same QURAN_CLIENT_ID / QURAN_CLIENT_SECRET that issued "
+                "DEMO_QURAN_REFRESH_TOKEN, widen QURAN_OAUTH_AUTHORIZE_SCOPES if you see insufficient_scope, then run "
+                "python scripts/fetch_demo_quran_tokens_cli.py or sign in again."
+            )
+        else:
+            log.info(
+                "demo user Quran tokens applied from DEMO_QURAN_ACCESS_TOKEN / DEMO_QURAN_REFRESH_TOKEN in .env "
+                "(live refresh did not run). After prelive rotation, run: python scripts/fetch_demo_quran_tokens_cli.py"
+            )
 
 
 @router.post("/demo", response_model=TokenResponse)
@@ -150,9 +196,7 @@ def quran_oauth_start() -> RedirectResponse:
     challenge = quran_user_service.pkce_challenge_from_verifier(verifier)
     auth_url = quran_user_service.oauth_authorize_endpoint(s)
     redirect_uri = s.quran_oauth_redirect_uri.strip()
-    # streak alone does not cover POST …/auth/v1/activity-days — see Activity Days scopes:
-    # https://api-docs.quran.foundation/docs/user_related_apis_versioned/scopes/
-    scope = "openid offline_access user streak activity_day activity_day.create"
+    scope = (s.quran_oauth_authorize_scopes or "").strip() or "openid offline_access user streak"
     qs = urllib.parse.urlencode(
         {
             "response_type": "code",
@@ -264,7 +308,11 @@ async def quran_oauth_callback(
 
     user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
     if user is None:
-        user = User(email=email, password_hash=hash_password(secrets.token_urlsafe(32)))
+        user = User(
+            email=email,
+            password_hash=hash_password(secrets.token_urlsafe(32)),
+            asar_session_id=str(uuid4()),
+        )
         db.add(user)
         db.commit()
         db.refresh(user)
@@ -288,5 +336,15 @@ async def quran_oauth_callback(
 
 
 @router.get("/me", response_model=UserMe)
-def me(user: Annotated[User, Depends(get_current_user)]) -> UserMe:
-    return UserMe.model_validate(user)
+def me(
+    user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_db),
+) -> UserMe:
+    if not (user.asar_session_id or "").strip():
+        user.asar_session_id = str(uuid4())
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    sid = (user.asar_session_id or "").strip()
+    assert sid, "asar_session_id must be set for /auth/me"
+    return UserMe(id=user.id, email=user.email, asar_session_id=sid)

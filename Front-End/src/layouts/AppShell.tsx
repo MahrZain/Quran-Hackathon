@@ -16,6 +16,7 @@ const sideNav = [
 /** Desktop: every Stitch screen with a route is reachable without typing URLs. */
 const sideNavMore = [
   { to: '/focus', label: 'Focus — Ayah', icon: 'center_focus_strong', end: false },
+  { to: '/chat', label: 'Quran companion', icon: 'chat', end: false },
   { to: '/mentor', label: 'AI Sanctuary Mentor', icon: 'forum', end: false },
   { to: '/insights', label: 'AI Insight Results', icon: 'auto_awesome', end: false },
   { to: '/habits', label: 'Habit ledger', icon: 'stars', end: false },
@@ -174,6 +175,17 @@ function AppShellInner() {
         </m.main>
       </div>
 
+      <NavLink
+        to="/chat"
+        className="fixed bottom-24 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-secondary-container text-on-secondary-container shadow-xl ring-2 ring-surface transition-transform hover:scale-[1.03] active:scale-[0.98] lg:bottom-10 lg:right-10"
+        aria-label="Open Quran companion chat"
+        title="Quran companion"
+      >
+        <span className="material-symbols-outlined text-2xl" aria-hidden>
+          chat
+        </span>
+      </NavLink>
+
       <nav
         className="fixed bottom-0 left-0 z-40 flex h-20 w-full items-center justify-around border-t border-outline-variant/10 bg-white/90 px-2 backdrop-blur-lg lg:hidden"
         aria-label="Primary"
@@ -232,9 +244,10 @@ function AppShellInner() {
 }
 
 export function AppShell() {
+  const { user } = useAuth()
   return (
     <AppSessionProvider>
-      <MoodAyahProvider>
+      <MoodAyahProvider key={user ? `u-${user.id}` : 'anon'}>
         <AppShellInner />
       </MoodAyahProvider>
     </AppSessionProvider>
