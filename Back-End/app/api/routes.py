@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user_optional
@@ -256,6 +256,19 @@ def history(
         select(ChatMessage).where(ChatMessage.session_id == sid).order_by(ChatMessage.created_at.asc())
     ).scalars().all()
     return [HistoryMessage.model_validate(m) for m in rows]
+
+
+@router.delete("/history/{session_id}", status_code=204)
+def clear_history(
+    session_id: UUID,
+    db: Session = Depends(get_db),
+    user: User | None = Depends(get_current_user_optional),
+) -> None:
+    """Remove all stored chat turns for this session (same scope as GET /history)."""
+    sid = _effective_session_id(db, user, str(session_id))
+    db.execute(delete(ChatMessage).where(ChatMessage.session_id == sid))
+    db.commit()
+    log.info("history cleared session=%s", sid)
 
 
 @router.post("/streak", response_model=StreakResponse)

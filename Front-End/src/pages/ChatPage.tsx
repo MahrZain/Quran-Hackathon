@@ -1,4 +1,4 @@
-import { Send } from 'lucide-react'
+import { Send, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ChatThinkingIndicator } from '../components/ChatThinkingIndicator'
@@ -54,6 +54,7 @@ export function ChatPage() {
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [hydrating, setHydrating] = useState(true)
+  const [clearing, setClearing] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
   /** React Router location key — survives Strict Mode remounts so we only auto-send once per navigation. */
   const initialHandledKeyRef = useRef<string | null>(null)
@@ -140,16 +141,54 @@ export function ChatPage() {
     void sendMessage(t)
   }, [draft, sendMessage])
 
+  const clearChat = useCallback(async () => {
+    if (clearing || sending || hydrating) return
+    if (
+      !window.confirm(
+        'Clear this conversation? All messages in this thread are removed from your session and cannot be recovered.',
+      )
+    )
+      return
+    setClearing(true)
+    try {
+      await apiClient.delete(`/history/${sessionId}`)
+      setRows([])
+      void refreshSessionChatStats()
+    } catch (e) {
+      window.alert(apiErrorMessage(e, 'Could not clear chat. Try again.'))
+    } finally {
+      setClearing(false)
+    }
+  }, [clearing, hydrating, refreshSessionChatStats, sending, sessionId])
+
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-2xl flex-1 flex-col px-3 sm:px-4">
       {/* Single card: everything inside the box; only the thread scrolls */}
       <div className="flex min-h-0 max-h-full flex-1 flex-col overflow-hidden rounded-bento border border-outline-variant/25 bg-surface-container-low shadow-ambient">
         <header className="shrink-0 border-b border-outline-variant/15 px-4 pb-3 pt-4 sm:px-5 sm:pt-5">
-          <h1 className="font-serif text-xl font-semibold text-primary sm:text-2xl">Quran companion</h1>
-          <p className="mt-1.5 text-xs leading-snug text-on-surface/65 sm:text-sm">
-            Grounded verses when the API finds them; streak unchanged.{' '}
-            <strong className="font-medium text-on-surface/80">Focus mode</strong> is read-only—chat here only.
-          </p>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <h1 className="font-serif text-xl font-semibold text-primary sm:text-2xl">Quran companion</h1>
+              <p className="mt-1.5 text-xs leading-snug text-on-surface/65 sm:text-sm">
+                Grounded verses when the API finds them; streak unchanged.{' '}
+                <strong className="font-medium text-on-surface/80">Focus mode</strong> is read-only—chat here only.
+              </p>
+            </div>
+            {!hydrating && rows.length > 0 ? (
+              <Button
+                type="button"
+                variant="ghost"
+                className="shrink-0 gap-1.5 px-3 py-2 text-xs text-on-surface-variant hover:text-primary"
+                disabled={sending || clearing}
+                onClick={() => void clearChat()}
+                title="Remove all messages in this thread"
+                aria-label="Clear chat"
+              >
+                <Trash2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                <span className="hidden sm:inline">Clear chat</span>
+              </Button>
+            ) : null}
+          </div>
         </header>
 
         <div
