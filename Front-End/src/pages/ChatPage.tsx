@@ -9,6 +9,8 @@ import type { ChatMessageResponse, ChatVerseCard, HistoryMessage } from '../lib/
 import { apiErrorMessage } from '../lib/apiErrors'
 import { useAuth } from '../context/AuthContext'
 import { useMoodAyah } from '../context/MoodAyahContext'
+import { ChatSamplePrompts } from '../components/ChatSamplePrompts'
+import { allChatSamplePrompts } from '../lib/chatSamplePrompts'
 
 type Row =
   | { role: 'user'; text: string }
@@ -146,8 +148,9 @@ export function ChatPage() {
       <header className="mb-3 shrink-0">
         <h1 className="font-serif text-2xl font-semibold text-primary">Quran companion</h1>
         <p className="text-sm text-on-surface/65">
-          Answers use verses fetched from the Quran Foundation HTTP APIs, then wording from the model. If nothing
-          matches search, you will see a gentle “no verse found” reply—no invented ayat. Your streak is unchanged here.
+          Your only ASAR chat for this session—grounded verses when the API finds matches; streak is unchanged here.{' '}
+          <strong className="font-medium text-on-surface/80">Focus mode</strong> is read-only (verse only); open this
+          page to ask questions.
         </p>
       </header>
 
@@ -161,6 +164,12 @@ export function ChatPage() {
                 Ask about a theme, a surah name, or paste a verse reference (e.g. 2:286). Replies stay within the verses
                 shown below each answer when available.
               </p>
+              <ChatSamplePrompts
+                prompts={allChatSamplePrompts}
+                disabled={sending || hydrating}
+                onPick={(text) => void sendMessage(text)}
+                className="w-full max-w-md"
+              />
               {user?.onboarding_topic_tag ? (
                 <Button
                   type="button"
@@ -208,6 +217,14 @@ export function ChatPage() {
             </>
           )}
         </div>
+        {!hydrating && rows.length > 0 ? (
+          <ChatSamplePrompts
+            prompts={allChatSamplePrompts}
+            disabled={sending}
+            onPick={(text) => void sendMessage(text)}
+            className="shrink-0 border-t border-outline-variant/10 pt-3"
+          />
+        ) : null}
         <div className="flex shrink-0 gap-2 border-t border-outline-variant/10 pt-3">
           <input
             value={draft}

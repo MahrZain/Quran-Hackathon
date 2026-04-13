@@ -35,15 +35,15 @@ function trimSnippet(line: string, maxLen: number): string {
 }
 
 const THEMATIC_WITH_THEMES: readonly string[] = [
-  'From your recent heart check-ins, words cluster around {themes}. Journaling one honest line per theme can help ASAR’s mentor stay precise.',
-  'Your check-ins keep circling {themes}. Naming that pattern in one line per theme helps the mentor stay aligned with you.',
+  'From your recent heart check-ins, words cluster around {themes}. Journaling one honest line per theme can help Quran companion stay precise.',
+  'Your check-ins keep circling {themes}. Naming that pattern in one line per theme helps Quran companion stay aligned with you.',
   'Themes like {themes} show up in what you’ve shared. Short notes on each give ASAR a steadier map for guidance.',
 ]
 
 const THEMATIC_NO_THEMES_HAS_CHECKS: readonly string[] = [
   'Keep sharing short moods in the compass bar—when themes repeat, they will surface here as anchors for reflection.',
   'Each brief check-in adds signal. As patterns repeat, this card will echo them so reflection stays grounded.',
-  'Light, honest lines add up. When a theme repeats, it will appear here to anchor your next mentor chat.',
+  'Light, honest lines add up. When a theme repeats, it will appear here to anchor your next chat in Quran companion.',
 ]
 
 const THEMATIC_EMPTY: readonly string[] = [
@@ -65,27 +65,27 @@ const RHYTHM_STREAK: readonly string[] = [
 ]
 
 const RHYTHM_START: readonly string[] = [
-  'Start with “Mark complete” on the dashboard after a short read, then revisit the mentor—continuity builds clearer guidance.',
-  'Try a brief read, tap Mark complete, then chat with the mentor when you’re ready—small loops compound.',
-  'One short read, one mark complete, then the mentor when it helps—that’s enough to build continuity.',
+  'Start with “Mark complete” on the dashboard after a short read, then open Quran companion—continuity builds clearer guidance.',
+  'Try a brief read, tap Mark complete, then open Quran companion when you’re ready—small loops compound.',
+  'One short read, one mark complete, then Quran companion when it helps—that’s enough to build continuity.',
 ]
 
 const PROMPT_WITH_SURAH: readonly string[] = [
-  'Your spotlight āyah is {surah} ({key}). Try one narrow question for the mentor about that verse only—context stays grounded and answers stay short.',
-  'Dashboard spotlight: {surah} ({key}). Ask the mentor one focused question on that āyah so replies stay tight and relevant.',
-  'You’re on {surah} ({key}). A single, verse-specific question keeps the mentor anchored and answers brief.',
+  'Your spotlight āyah is {surah} ({key}). Try one narrow question in Quran companion about that verse only—context stays grounded and answers stay short.',
+  'Dashboard spotlight: {surah} ({key}). Ask one focused question in Quran companion on that āyah so replies stay tight and relevant.',
+  'You’re on {surah} ({key}). A single, verse-specific question keeps your chat anchored and answers brief.',
 ]
 
 const PROMPT_KEY_ONLY: readonly string[] = [
-  'Your spotlight āyah is {key}. Try one narrow question for the mentor about that verse only—context stays grounded and answers stay short.',
+  'Your spotlight āyah is {key}. Try one narrow question in Quran companion about that verse only—context stays grounded and answers stay short.',
   'Spotlight {key}. One specific question about that āyah keeps answers short and on-topic.',
-  'Focus question on {key} only—the mentor stays grounded when the scope is one verse.',
+  'Focus question on {key} only—Quran companion stays grounded when the scope is one verse.',
 ]
 
 const PROMPT_NO_KEY: readonly string[] = [
-  'Open Quran progress, pick a surah, then ask the mentor about a single āyah—narrow questions keep the sanctuary clear.',
+  'Open Quran progress, pick a surah, then ask in Quran companion about a single āyah—narrow questions keep the sanctuary clear.',
   'Choose one āyah in the reader, then ask about that verse alone—tight scope keeps guidance calm.',
-  'Ground the mentor in one verse at a time; broad questions are harder to answer well in one pass.',
+  'Ground Quran companion in one verse at a time; broad questions are harder to answer well in one pass.',
 ]
 
 function fillTemplate(tpl: string, vars: Record<string, string | number>): string {

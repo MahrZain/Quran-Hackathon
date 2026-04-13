@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { QuranAyahText } from '../components/QuranAyahText'
 import { useMoodAyah } from '../context/MoodAyahContext'
 import type { VerseBundleResponse } from '../lib/apiTypes'
@@ -63,9 +63,14 @@ export function FocusPage() {
           </>
         )}
       </div>
-      <p className="mt-8 text-center text-xs text-on-surface/45">
-        Opened from the dashboard with your current āyah, or from a link with <code className="text-on-surface/55">?surah=&amp;ayah=</code>
-        .
+      <p className="mt-8 text-center text-xs leading-relaxed text-on-surface/45">
+        Opened from the dashboard with your current āyah, or from a link with <code className="text-on-surface/55">?surah=&amp;ayah=</code>.
+        This page is <strong className="font-medium text-on-surface/55">read-only</strong>—no chat here. For questions
+        with grounded verses, open{' '}
+        <Link to="/chat" className="font-medium text-secondary hover:underline">
+          Quran companion
+        </Link>{' '}
+        (sample prompts help you start).
       </p>
     </div>
   )

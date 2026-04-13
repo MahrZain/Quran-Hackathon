@@ -11,7 +11,6 @@ import { FocusPage } from './pages/FocusPage'
 import { HabitsPage } from './pages/HabitsPage'
 import { InsightsPage } from './pages/InsightsPage'
 import { LibraryPage } from './pages/LibraryPage'
-import { MentorPage } from './pages/MentorPage'
 import { QuranListPage } from './pages/QuranListPage'
 import { ReaderPage } from './pages/ReaderPage'
 import { SettingsPage } from './pages/SettingsPage'
@@ -49,7 +48,7 @@ export function App() {
           <Route path="/focus" element={<FocusPage />} />
           <Route path="/habits" element={<HabitsPage />} />
           <Route path="/chat" element={<ChatPage />} />
-          <Route path="/mentor" element={<MentorPage />} />
+          <Route path="/mentor" element={<Navigate to="/chat" replace />} />
           <Route path="/insights" element={<InsightsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/settings/reading" element={<OnboardingPage />} />

@@ -17,7 +17,6 @@ const sideNav = [
 const sideNavMore = [
   { to: '/focus', label: 'Focus — Ayah', icon: 'center_focus_strong', end: false },
   { to: '/chat', label: 'Quran companion', icon: 'chat', end: false },
-  { to: '/mentor', label: 'AI Sanctuary Mentor', icon: 'forum', end: false },
   { to: '/insights', label: 'AI Insight Results', icon: 'auto_awesome', end: false },
   { to: '/habits', label: 'Habit ledger', icon: 'stars', end: false },
   { to: '/config', label: 'Sanctuary configuration', icon: 'tune', end: false },
@@ -213,9 +212,9 @@ function AppShellInner() {
         </NavLink>
         <div className="relative -top-8">
           <NavLink
-            to="/mentor"
+            to="/chat"
             className="flex rounded-full bg-primary p-4 text-on-primary shadow-2xl shadow-primary/40 ring-8 ring-surface"
-            aria-label="Quick ask"
+            aria-label="Open Quran companion"
           >
             <span className="material-symbols-outlined text-3xl">add</span>
           </NavLink>

@@ -184,15 +184,12 @@ export function DashboardPage() {
             <h2 className="font-headline text-2xl font-bold tracking-tight text-primary sm:text-3xl">
               Daily ASAR
             </h2>
-            <p className="mt-2 text-xs font-medium uppercase tracking-widest text-on-surface-variant opacity-60">
-              Heart Alignment
-            </p>
             <p className="mt-3 max-w-xs text-center text-[11px] leading-snug text-on-surface-variant/75">
               {atScopeLimit
                 ? isSingleSurahScope
-                  ? 'You finished this surah. Use Start again to go back to āyah 1, or change surah when settings allow.'
-                  : 'You finished the Qur’an (An-Nās). Use Start again to begin again from Al-Fātiḥah 1:1.'
-                : 'Mark complete logs today for your streak and moves the card to the next āyah (within your reading scope). Tap again anytime you finish another verse.'}
+                  ? 'End of this surah — tap Start again for āyah 1.'
+                  : 'End of the Qur’an — tap Start again from Al-Fātiḥah.'
+                : 'Mark complete updates your streak and moves to the next āyah.'}
             </p>
             <div className="relative mt-8 flex h-56 w-56 shrink-0 items-center justify-center sm:mt-10 sm:h-72 sm:w-72">
               <div className="absolute inset-0 rounded-full border-[14px] border-surface-container opacity-50 sm:border-[18px]" />
@@ -205,9 +202,6 @@ export function DashboardPage() {
                   {flowPercent}
                   <span className="text-2xl font-bold text-secondary sm:text-3xl">%</span>
                 </span>
-                <div className="mt-2 text-xs font-bold uppercase tracking-widest text-primary/90">
-                  Fulfilled
-                </div>
               </div>
             </div>
             <div className="relative z-10 mt-4 flex w-full max-w-xs flex-col items-center gap-2">
@@ -249,17 +243,11 @@ export function DashboardPage() {
                   }`}
                 >
                   {scopeEndHint ? (
-                    <>
-                      Saved. You&apos;re at the <strong>end of your reading scope</strong> — the streak still counts;
-                      stay on this verse or change scope in settings when we add it.
-                    </>
+                    <>Saved — at end of reading scope; streak counted.</>
                   ) : streakUnchangedHint ? (
-                    <>
-                      Saved. Your <strong>streak number</strong> didn&apos;t change (same calendar day), but the
-                      dashboard advanced to your <strong>next āyah</strong>.
-                    </>
+                    <>Saved — same day streak; card advanced to next āyah.</>
                   ) : (
-                    <>Saved — streak updated and the next āyah is on the card.</>
+                    <>Saved — streak updated.</>
                   )}
                 </p>
               )}
@@ -287,18 +275,12 @@ export function DashboardPage() {
               <div className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
                 Heart check-ins
               </div>
-              <p className="mt-1 text-[10px] leading-snug text-on-surface-variant/80">
-                User messages in Quran companion — not updated by Mark complete.
-              </p>
             </div>
             <div>
               <div className="text-lg font-bold text-secondary sm:text-xl">{sessionTotalMessages}</div>
               <div className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
                 Session turns
               </div>
-              <p className="mt-1 text-[10px] leading-snug text-on-surface-variant/80">
-                All chat rows (you + ASAR) in Quran companion this session.
-              </p>
             </div>
           </div>
         </div>
@@ -337,7 +319,7 @@ export function DashboardPage() {
                   Engagement
                 </span>
                 <p className="mt-0.5 max-w-[11rem] text-[9px] leading-tight text-emerald-500/50">
-                  Streak and āyāt marked today boost this score; heart check-ins add more (Quran companion only).
+                  Streak, marks today, and companion chat.
                 </p>
               </div>
             </div>
