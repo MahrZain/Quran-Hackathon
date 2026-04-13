@@ -35,8 +35,10 @@ function AppShellInner() {
   const navigate = useNavigate()
   const { logout } = useAuth()
 
+  const chatLayout = location.pathname === '/chat'
+
   return (
-    <div className="min-h-svh bg-surface text-on-surface">
+    <div className="flex min-h-svh flex-1 flex-col bg-surface text-on-surface">
       <header className="asar-glass fixed top-0 z-50 flex h-20 w-full items-center px-4 shadow-ambient sm:px-6">
         <div className="flex w-28 shrink-0 items-center sm:w-36">
           <NavLink
@@ -72,7 +74,7 @@ function AppShellInner() {
         </div>
       </header>
 
-      <div className="flex pt-20">
+      <div className="flex min-h-0 flex-1 pt-20">
         <aside className="fixed left-0 top-20 z-20 hidden h-[calc(100vh-5rem)] w-64 flex-col overflow-y-auto overscroll-contain bg-surface py-6 lg:flex">
           <div className="flex-1 space-y-1 px-0 pt-1">
             {sideNav.map(({ to, label, icon, end }) => (
@@ -165,7 +167,11 @@ function AppShellInner() {
 
         <m.main
           key={location.pathname}
-          className="flex-1 bg-surface p-4 pb-28 sm:p-8 lg:ml-64 lg:pb-8"
+          className={`flex-1 bg-surface p-4 pb-28 sm:p-8 lg:ml-64 lg:pb-8 ${
+            chatLayout
+              ? 'flex min-h-0 flex-col overflow-hidden'
+              : 'min-h-0 overflow-y-auto overflow-x-hidden'
+          }`}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.25 }}

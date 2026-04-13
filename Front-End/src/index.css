@@ -29,7 +29,7 @@
   }
 
   #root {
-    @apply min-h-svh;
+    @apply flex min-h-svh min-h-0 flex-col;
   }
 
   .material-symbols-outlined {

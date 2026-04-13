@@ -141,10 +141,7 @@ export function ChatPage() {
   }, [draft, sendMessage])
 
   return (
-    <div
-      className="mx-auto flex w-full max-w-2xl flex-col px-4"
-      style={{ minHeight: 'calc(100svh - 5rem)' }}
-    >
+    <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col px-4">
       <header className="mb-3 shrink-0">
         <h1 className="font-serif text-2xl font-semibold text-primary">Quran companion</h1>
         <p className="text-sm text-on-surface/65">
@@ -154,8 +151,12 @@ export function ChatPage() {
         </p>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 rounded-bento bg-surface-container-low p-4 shadow-ambient">
-        <div ref={listRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden rounded-bento bg-surface-container-low p-4 shadow-ambient">
+        <div
+          ref={listRef}
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]"
+        >
+          <div className="flex min-h-min flex-col gap-3">
           {hydrating ? (
             <p className="text-center text-sm text-on-surface/55">Loading your conversation…</p>
           ) : rows.length === 0 && !sending ? (
@@ -216,6 +217,7 @@ export function ChatPage() {
               {!hydrating && sending ? <ChatThinkingIndicator /> : null}
             </>
           )}
+          </div>
         </div>
         {!hydrating && rows.length > 0 ? (
           <ChatSamplePrompts
