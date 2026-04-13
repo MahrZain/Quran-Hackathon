@@ -61,6 +61,45 @@ def seed_reading_cursor_from_legacy(db: Session, user: User) -> bool:
     return True
 
 
+def cursor_at_reading_scope_end(user: User) -> bool:
+    """
+    True when the user's reading cursor is on the last āyah of their scope
+    (end of chosen surah in single_surah mode, or 114:6 in full_mushaf).
+    """
+    if user.onboarding_completed_at is None:
+        return False
+    if user.reading_cursor_surah is None or user.reading_cursor_ayah is None:
+        return False
+    scope = (user.reading_scope or "full_mushaf").strip().lower()
+    if scope not in ("full_mushaf", "single_surah"):
+        scope = "full_mushaf"
+    nxt = next_verse(
+        user.reading_cursor_surah,
+        user.reading_cursor_ayah,
+        scope=scope,
+        scope_surah=user.reading_scope_surah,
+    )
+    return nxt.at_scope_end
+
+
+def restart_reading_cursor(user: User) -> None:
+    """
+    Move cursor back to the start of the user’s scope: Al-Fātiḥah 1:1 for full_mushaf,
+    or āyah 1 of `reading_scope_surah` for single_surah.
+    """
+    scope = (user.reading_scope or "full_mushaf").strip().lower()
+    if scope not in ("full_mushaf", "single_surah"):
+        scope = "full_mushaf"
+    if scope == "single_surah" and user.reading_scope_surah is not None:
+        s, a = user.reading_scope_surah, 1
+    else:
+        s, a = 1, 1
+    user.reading_cursor_surah = s
+    user.reading_cursor_ayah = a
+    user.reading_start_surah = s
+    user.reading_start_ayah = a
+
+
 def effective_current_verse_key(user: User) -> str | None:
     if user.reading_cursor_surah is not None and user.reading_cursor_ayah is not None:
         return format_verse_key(user.reading_cursor_surah, user.reading_cursor_ayah)

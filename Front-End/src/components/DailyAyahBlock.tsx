@@ -81,9 +81,9 @@ export function DailyAyahBlock({ ayah, className = '' }: DailyAyahBlockProps) {
       </div>
       <div
         className={`mt-6 flex flex-col gap-4 border-t border-outline-variant/20 pt-6 transition-opacity duration-500 sm:mt-8 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between ${
-          verseEnrichmentStatus === 'pending' ? 'opacity-90' : 'opacity-100'
+          verseEnrichmentStatus === 'pending' || verseEnrichmentStatus === 'text_ready' ? 'opacity-90' : 'opacity-100'
         }`}
-        aria-busy={verseEnrichmentStatus === 'pending'}
+        aria-busy={verseEnrichmentStatus === 'pending' || verseEnrichmentStatus === 'text_ready'}
       >
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
           <div className="flex items-center gap-3">
@@ -95,6 +95,10 @@ export function DailyAyahBlock({ ayah, className = '' }: DailyAyahBlockProps) {
           {verseEnrichmentStatus === 'pending' ? (
             <span className="text-[10px] font-medium uppercase tracking-wider text-on-surface-variant/70">
               Syncing ayah &amp; audio in background…
+            </span>
+          ) : verseEnrichmentStatus === 'text_ready' ? (
+            <span className="text-[10px] font-medium uppercase tracking-wider text-on-surface-variant/70">
+              Loading translation &amp; audio…
             </span>
           ) : verseEnrichmentStatus === 'unavailable' ? (
             <span className="text-[10px] font-medium text-on-surface-variant/70">Using offline ayah text</span>

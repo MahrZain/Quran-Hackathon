@@ -3,7 +3,7 @@
  * is hit once per streak session / verse key while prefetch + page hooks overlap.
  */
 import { apiClient } from './apiClient'
-import type { StreakSnapshot, VerseBundleResponse } from './apiTypes'
+import type { HistoryMessage, StreakActivityItem, StreakSnapshot, VerseBundleResponse } from './apiTypes'
 
 const inflight = new Map<string, Promise<unknown>>()
 
@@ -23,10 +23,48 @@ export function fetchStreakSnapshotDeduped(sessionId: string) {
   )
 }
 
+export function fetchStreakActivitiesDeduped(sessionId: string, limit = 120) {
+  return share(`streakActs:${sessionId}:${limit}`, () =>
+    apiClient
+      .get<StreakActivityItem[]>(`/streak/${sessionId}/activities`, { params: { limit } })
+      .then((r) => r.data),
+  )
+}
+
 export function fetchVerseBundleDeduped(verseKey: string) {
   return share(`verse:${verseKey}`, () =>
     apiClient.get<VerseBundleResponse>('/verse', { params: { verse_key: verseKey } }).then((r) => r.data),
   )
+}
+
+export function fetchHistoryDeduped(sessionId: string) {
+  return share(`history:${sessionId}`, () =>
+    apiClient.get<HistoryMessage[]>(`/history/${sessionId}`).then((r) => r.data),
+  )
+}
+
+/** Warm browser audio cache when URL is already known (no extra HTTP). */
+export function preloadAudioFromUrl(url: string | null | undefined): void {
+  const u = url?.trim()
+  if (!u) return
+  try {
+    const el = new Audio(u)
+    el.preload = 'auto'
+    void el.load()
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Fetch verse bundle (deduped) then preload audio URL.
+ */
+export function preloadVerseAudio(verseKey: string): void {
+  void fetchVerseBundleDeduped(verseKey)
+    .then((data) => {
+      preloadAudioFromUrl(data.audio_url)
+    })
+    .catch(() => {})
 }
 
 /** Parallel streak + verse; safe to call from layout prefetch. */

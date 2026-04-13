@@ -1,6 +1,7 @@
 import { ChevronLeft } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { SurahAyahPicker, verseCountForSurah } from '../components/SurahAyahPicker'
 import { Button } from '../components/ui/Button'
 import { useAuth } from '../context/AuthContext'
 import { apiClient } from '../lib/apiClient'
@@ -36,6 +37,8 @@ function choiceCardClass(selected: boolean) {
 export function OnboardingPage() {
   const { user, loading, refreshUser } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const isEditMode = location.pathname === '/settings/reading'
 
   const [level, setLevel] = useState<LevelId | null>(null)
   const [intent, setIntent] = useState<IntentId | null>(null)
@@ -50,14 +53,15 @@ export function OnboardingPage() {
   const [stepIndex, setStepIndex] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const prefilledRef = useRef(false)
 
   const steps = useMemo((): StepKey[] => ['level', 'intent', 'scope', 'start', 'done'], [])
 
   useEffect(() => {
-    if (!loading && user?.onboarding_completed) {
+    if (!loading && user?.onboarding_completed && !isEditMode) {
       navigate('/', { replace: true })
     }
-  }, [loading, user?.onboarding_completed, navigate])
+  }, [loading, user?.onboarding_completed, navigate, isEditMode])
 
   useEffect(() => {
     let cancelled = false
@@ -77,7 +81,49 @@ export function OnboardingPage() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!isEditMode || !user?.onboarding_completed || loading || prefilledRef.current) return
+    prefilledRef.current = true
+    const g = (user.onboarding_goal || 'habit').toLowerCase()
+    setIntent(g === 'reading' ? 'reading' : 'habit')
+    let lv = (user.onboarding_level || 'beginner').toLowerCase()
+    if (lv === 'regular') lv = 'daily_learner'
+    if (lv === 'beginner' || lv === 'intermediate' || lv === 'daily_learner') {
+      setLevel(lv as LevelId)
+    } else {
+      setLevel('beginner')
+    }
+    const rs = (user.reading_scope || 'full_mushaf').toLowerCase()
+    const scope: ScopeId = rs === 'single_surah' ? 'single_surah' : 'full_mushaf'
+    setReadingScope(scope)
+    setScopeSurah(user.reading_scope_surah ?? null)
+
+    const key = user.current_verse_key || user.recommended_verse_key || ''
+    const parts = key.split(':')
+    const si = Number(parts[0])
+    const ai = Number(parts[1])
+    const ss = user.reading_scope_surah
+    const atBeginning =
+      Number.isFinite(si) &&
+      Number.isFinite(ai) &&
+      ((scope !== 'single_surah' && si === 1 && ai === 1) ||
+        (scope === 'single_surah' && ss != null && si === ss && ai === 1))
+    if (atBeginning) {
+      setStartLocation('beginning')
+    } else if (Number.isFinite(si) && Number.isFinite(ai)) {
+      setStartLocation('custom')
+      setCustomSurah(String(si))
+      setCustomAyah(String(ai))
+    } else {
+      setStartLocation('beginning')
+    }
+  }, [isEditMode, user, loading])
+
   const currentStep = steps[stepIndex] ?? 'level'
+
+  const customSurahNum = Number(customSurah)
+  const customAyahNum = Number(customAyah)
+  const maxAyahCustom = verseCountForSurah(chapters, customSurahNum) ?? 286
 
   const canAdvance = useMemo(() => {
     if (currentStep === 'level') return level !== null
@@ -90,11 +136,10 @@ export function OnboardingPage() {
     if (currentStep === 'start') {
       if (!startLocation) return false
       if (startLocation === 'custom') {
-        const s = Number(customSurah)
-        const a = Number(customAyah)
-        if (!Number.isFinite(s) || s < 1 || s > 114) return false
-        if (!Number.isFinite(a) || a < 1) return false
-        if (readingScope === 'single_surah' && scopeSurah !== null && s !== scopeSurah) return false
+        if (!Number.isFinite(customSurahNum) || customSurahNum < 1 || customSurahNum > 114) return false
+        if (!Number.isFinite(customAyahNum) || customAyahNum < 1) return false
+        if (customAyahNum > maxAyahCustom) return false
+        if (readingScope === 'single_surah' && scopeSurah !== null && customSurahNum !== scopeSurah) return false
         return true
       }
       return true
@@ -107,8 +152,9 @@ export function OnboardingPage() {
     readingScope,
     scopeSurah,
     startLocation,
-    customSurah,
-    customAyah,
+    customSurahNum,
+    customAyahNum,
+    maxAyahCustom,
   ])
 
   const handleContinue = useCallback(() => {
@@ -132,8 +178,8 @@ export function OnboardingPage() {
       start_surah = undefined
       start_ayah = undefined
     } else {
-      start_surah = Number(customSurah)
-      start_ayah = Number(customAyah)
+      start_surah = customSurahNum
+      start_ayah = customAyahNum
     }
 
     const payload: OnboardingCompletePayload = {
@@ -151,7 +197,7 @@ export function OnboardingPage() {
     try {
       await apiClient.patch<UserMe>('/auth/me/onboarding', payload)
       await refreshUser()
-      navigate('/', { replace: true })
+      navigate(isEditMode ? '/settings' : '/', { replace: true })
     } catch (e) {
       setErr(apiErrorMessage(e))
     } finally {
@@ -163,10 +209,11 @@ export function OnboardingPage() {
     readingScope,
     scopeSurah,
     startLocation,
-    customSurah,
-    customAyah,
+    customSurahNum,
+    customAyahNum,
     refreshUser,
     navigate,
+    isEditMode,
   ])
 
   const progress = Math.round(((stepIndex + 1) / steps.length) * 100)
@@ -194,6 +241,15 @@ export function OnboardingPage() {
                 <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden />
                 Back
               </button>
+            ) : isEditMode ? (
+              <button
+                type="button"
+                onClick={() => navigate('/settings')}
+                className="inline-flex items-center gap-1 rounded-full px-2 py-1.5 text-sm font-semibold text-secondary transition hover:bg-surface-container-low hover:text-primary"
+              >
+                <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden />
+                Settings
+              </button>
             ) : (
               <span className="inline-block w-[4.5rem]" aria-hidden />
             )}
@@ -207,6 +263,11 @@ export function OnboardingPage() {
             </span>
           </div>
         </div>
+        {isEditMode && (
+          <p className="mx-auto mt-2 max-w-lg px-4 text-center text-xs text-on-surface-variant sm:px-8">
+            Reading preferences — saving updates your path and moves your cursor to the start you choose.
+          </p>
+        )}
       </header>
 
       <main className="relative z-10 mx-auto flex w-full max-w-lg flex-1 flex-col px-4 py-8 sm:px-8">
@@ -277,36 +338,13 @@ export function OnboardingPage() {
             </div>
             {readingScope === 'single_surah' && (
               <div className="mt-6">
-                <label htmlFor="scope-surah" className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                  Surah
-                </label>
-                {chapters && chapters.length > 0 ? (
-                  <select
-                    id="scope-surah"
-                    className="mt-2 w-full rounded-xl border border-outline-variant/25 bg-surface-container-low px-4 py-3 text-sm text-on-surface"
-                    value={scopeSurah ?? ''}
-                    onChange={(e) => setScopeSurah(e.target.value ? Number(e.target.value) : null)}
-                  >
-                    <option value="">Choose surah…</option>
-                    {chapters.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.id}. {c.transliteration || c.name}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    id="scope-surah"
-                    type="number"
-                    min={1}
-                    max={114}
-                    placeholder="1–114"
-                    className="mt-2 w-full rounded-xl border border-outline-variant/25 bg-surface-container-low px-4 py-3 text-sm text-on-surface"
-                    value={scopeSurah ?? ''}
-                    onChange={(e) => setScopeSurah(e.target.value ? Number(e.target.value) : null)}
-                  />
-                )}
-                {chaptersErr && <p className="mt-2 text-xs text-on-surface-variant">{chaptersErr}</p>}
+                <SurahAyahPicker
+                  chapters={chapters}
+                  surahId={scopeSurah}
+                  onSurahChange={setScopeSurah}
+                  surahLabel="Choose surah"
+                  errorHint={chaptersErr}
+                />
               </div>
             )}
           </>
@@ -318,7 +356,7 @@ export function OnboardingPage() {
             <p className="mt-2 text-sm text-on-surface/65">
               {readingScope === 'single_surah'
                 ? 'Begin at the opening āyah of that surah, or jump to a specific verse.'
-                : 'Begin at Al-Fātiḥah, or pick any surah and āyah.'}
+                : 'Begin at Al-Fātiḥah, or pick any surah and āyah by name or number.'}
             </p>
             <div className="mt-8 flex flex-col gap-3">
               <button
@@ -338,50 +376,54 @@ export function OnboardingPage() {
               >
                 <span className="font-semibold text-on-surface">Pick surah &amp; āyah</span>
                 <p className="mt-1 text-xs text-on-surface/60">
-                  {readingScope === 'single_surah' ? 'Must be inside your chosen surah.' : 'Any valid reference (1:1–114:6).'}
+                  {readingScope === 'single_surah' ? 'Must be inside your chosen surah.' : 'Search by surah name, then choose āyah.'}
                 </p>
               </button>
             </div>
-            {startLocation === 'custom' && (
-              <div className="mt-6 grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="cs" className="text-xs font-bold text-on-surface-variant">
-                    Surah
-                  </label>
-                  <input
-                    id="cs"
-                    type="number"
-                    min={1}
-                    max={114}
-                    className="mt-1 w-full rounded-xl border border-outline-variant/25 bg-surface-container-low px-3 py-2 text-sm"
-                    value={customSurah}
-                    onChange={(e) => setCustomSurah(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="ca" className="text-xs font-bold text-on-surface-variant">
-                    Āyah
-                  </label>
-                  <input
-                    id="ca"
-                    type="number"
-                    min={1}
-                    className="mt-1 w-full rounded-xl border border-outline-variant/25 bg-surface-container-low px-3 py-2 text-sm"
-                    value={customAyah}
-                    onChange={(e) => setCustomAyah(e.target.value)}
-                  />
-                </div>
-              </div>
+            {startLocation === 'custom' && readingScope === 'single_surah' && scopeSurah != null && (
+              <SurahAyahPicker
+                chapters={chapters}
+                surahId={scopeSurah}
+                onSurahChange={() => {}}
+                lockSurahId={scopeSurah}
+                showAyah
+                ayahNumber={customAyahNum}
+                onAyahChange={(n) => setCustomAyah(String(n))}
+                surahLabel="Your surah"
+              />
+            )}
+            {startLocation === 'custom' && readingScope === 'full_mushaf' && (
+              <SurahAyahPicker
+                chapters={chapters}
+                surahId={Number.isFinite(customSurahNum) && customSurahNum >= 1 ? customSurahNum : null}
+                onSurahChange={(id) => {
+                  if (id != null) setCustomSurah(String(id))
+                }}
+                showAyah
+                ayahNumber={customAyahNum}
+                onAyahChange={(n) => setCustomAyah(String(n))}
+                surahLabel="Search surah"
+                errorHint={chaptersErr}
+              />
             )}
           </>
         )}
 
         {currentStep === 'done' && (
           <>
-            <h1 className="font-headline text-2xl font-bold text-primary">You’re ready</h1>
+            <h1 className="font-headline text-2xl font-bold text-primary">{isEditMode ? 'Review & save' : 'You’re ready'}</h1>
             <p className="mt-2 text-sm text-on-surface/65">
-              Your dashboard shows the current verse. Each <strong className="font-semibold text-on-surface/80">Mark complete</strong> logs your
-              streak and moves you to the next āyah (within the scope you chose).
+              {isEditMode ? (
+                <>
+                  Saving applies your choices and <strong className="font-semibold text-on-surface/80">moves your reading cursor</strong> to the
+                  start position below (same as first-time setup).
+                </>
+              ) : (
+                <>
+                  Your dashboard shows the current verse. Each <strong className="font-semibold text-on-surface/80">Mark complete</strong> logs your
+                  streak and moves you to the next āyah (within the scope you chose).
+                </>
+              )}
             </p>
             <p className="mt-4 rounded-xl border border-outline-variant/15 bg-surface-container-low/50 px-4 py-3 text-xs leading-relaxed text-on-surface/70">
               <span className="font-semibold text-on-surface/85">Summary: </span>
@@ -396,7 +438,7 @@ export function OnboardingPage() {
                 Back
               </Button>
               <Button type="button" className="flex-1" disabled={submitting} onClick={() => void submit()}>
-                {submitting ? 'Saving…' : 'Enter ASAR'}
+                {submitting ? 'Saving…' : isEditMode ? 'Save changes' : 'Enter ASAR'}
               </Button>
             </div>
           </>

@@ -72,6 +72,39 @@ export function SettingsPage() {
             <p className="text-sm text-on-surface">
               Signed in as <span className="font-semibold text-primary">{user.email}</span>
             </p>
+            {user.onboarding_completed ? (
+              <div className="rounded-xl border border-outline-variant/15 bg-surface-container-low/80 p-4 text-sm text-on-surface/80">
+                <h3 className="font-headline text-xs font-bold uppercase tracking-widest text-on-surface-variant">Reading path</h3>
+                <ul className="mt-2 list-inside list-disc space-y-1 text-xs leading-relaxed">
+                  <li>
+                    Level: <span className="font-medium text-on-surface">{user.onboarding_level ?? '—'}</span>
+                  </li>
+                  <li>
+                    Focus: <span className="font-medium text-on-surface">{user.onboarding_goal ?? '—'}</span>
+                  </li>
+                  <li>
+                    Scope:{' '}
+                    <span className="font-medium text-on-surface">
+                      {user.reading_scope === 'single_surah'
+                        ? `One surah${user.reading_scope_surah != null ? ` (#${user.reading_scope_surah})` : ''}`
+                        : user.reading_scope === 'full_mushaf'
+                          ? 'Full Qur’an'
+                          : user.reading_scope ?? '—'}
+                    </span>
+                  </li>
+                  <li>
+                    Current verse:{' '}
+                    <span className="font-medium text-on-surface">{user.current_verse_key ?? user.recommended_verse_key ?? '—'}</span>
+                  </li>
+                </ul>
+                <Link
+                  to="/settings/reading"
+                  className="mt-3 inline-flex text-sm font-semibold text-secondary hover:underline"
+                >
+                  Change reading setup
+                </Link>
+              </div>
+            ) : null}
             <button
               type="button"
               onClick={() => {

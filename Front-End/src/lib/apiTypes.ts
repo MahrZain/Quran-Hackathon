@@ -39,6 +39,12 @@ export type StreakSnapshot = {
   updated_streak_count: number
 }
 
+/** One row from GET /streak/{session_id}/activities (date + verse marked that UTC day). */
+export type StreakActivityItem = {
+  activity_date: string
+  ayah_read: string
+}
+
 export type StreakResponse = {
   ok: boolean
   updated_streak_count: number
@@ -98,6 +104,8 @@ export type UserMe = {
   reading_scope?: string | null
   reading_scope_surah?: number | null
   ayahs_marked_today?: number
+  /** True when cursor is on the last āyah of the user's scope (single surah or full mushaf). */
+  at_reading_scope_end?: boolean
 }
 
 export type VerseBundleResponse = {

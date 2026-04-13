@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.models.domain import MessageRole
 
@@ -74,6 +74,15 @@ class StreakSnapshot(BaseModel):
     updated_streak_count: int
 
 
+class StreakActivityOut(BaseModel):
+    """One day’s logged mark-complete row for the habit ledger."""
+
+    activity_date: date
+    ayah_read: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class HistoryMessage(BaseModel):
     role: MessageRole
     content: str
@@ -134,6 +143,7 @@ class UserMe(BaseModel):
     reading_scope: str | None = None
     reading_scope_surah: int | None = None
     ayahs_marked_today: int = 0
+    at_reading_scope_end: bool = False
 
 
 class OnboardingCompleteRequest(BaseModel):

@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext'
 import { useMoodAyah } from '../context/MoodAyahContext'
 import { useAppSession } from '../hooks/useAppSession'
 import { apiClient } from '../lib/apiClient'
-import type { StreakResponse } from '../lib/apiTypes'
+import type { StreakResponse, UserMe } from '../lib/apiTypes'
 import { asarE2eTrace } from '../lib/asarE2eTrace'
 import { dailyAyahFromVerseKey, fillSurahMeta, getDailyAyahFromTopicTag } from '../lib/mockData'
 import { constellationDaysFromStreak } from '../lib/streakHelpers'
@@ -27,6 +27,7 @@ export function DashboardPage() {
     syncStreakCount,
     sessionUserMessages,
     sessionTotalMessages,
+    refreshSessionChatStats,
     ayahsMarkedToday,
     syncAyahsMarkedToday,
   } = useMoodAyah()
@@ -38,6 +39,7 @@ export function DashboardPage() {
   const [qfToast, setQfToast] = useState(false)
   const [streakUnchangedHint, setStreakUnchangedHint] = useState(false)
   const [scopeEndHint, setScopeEndHint] = useState(false)
+  const [restartLoading, setRestartLoading] = useState(false)
   const markSavedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const qfToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const streakHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -53,6 +55,14 @@ export function DashboardPage() {
     ),
   )
   const engagementPoints = sessionUserMessages * 12 + streakCount * 20 + ayahsMarkedToday * 8
+
+  const displayVerseKey = `${displayAyah.surahId}:${displayAyah.ayahNumber}`
+  const alignedWithServerCursor =
+    Boolean(user?.onboarding_completed && user?.current_verse_key === displayVerseKey)
+  const atScopeLimit =
+    Boolean(user?.at_reading_scope_end) && alignedWithServerCursor
+  const isSingleSurahScope = user?.reading_scope === 'single_surah'
+
   const streakSubtitle =
     streakCount === 0
       ? 'Start your streak'
@@ -95,6 +105,7 @@ export function DashboardPage() {
         setDisplayAyah(fillSurahMeta(dailyAyahFromVerseKey(data.next_verse_key)))
       }
       setScopeEndHint(Boolean(data.at_scope_end))
+      void refreshSessionChatStats()
       void refreshUser()
       asarE2eTrace('STEP 4 — streak logged (SQLite streak_activities)', {
         ok: data.ok,
@@ -133,8 +144,25 @@ export function DashboardPage() {
     syncStreakCount,
     syncAyahsMarkedToday,
     setDisplayAyah,
+    refreshSessionChatStats,
     refreshUser,
   ])
+
+  const onRestartReading = useCallback(async () => {
+    setMarkError(null)
+    setRestartLoading(true)
+    try {
+      const { data } = await apiClient.post<UserMe>('/auth/me/reading-restart')
+      if (data.current_verse_key && /^\d+:\d+$/.test(data.current_verse_key)) {
+        setDisplayAyah(fillSurahMeta(dailyAyahFromVerseKey(data.current_verse_key)))
+      }
+      await refreshUser()
+    } catch {
+      setMarkError('Could not restart reading. Is the ASAR Engine running?')
+    } finally {
+      setRestartLoading(false)
+    }
+  }, [refreshUser, setDisplayAyah])
 
   return (
     <div className="relative mx-auto max-w-7xl">
@@ -160,8 +188,11 @@ export function DashboardPage() {
               Heart Alignment
             </p>
             <p className="mt-3 max-w-xs text-center text-[11px] leading-snug text-on-surface-variant/75">
-              Mark complete logs today for your streak and moves the card to the next āyah (within your reading scope).
-              Tap again anytime you finish another verse.
+              {atScopeLimit
+                ? isSingleSurahScope
+                  ? 'You finished this surah. Use Start again to go back to āyah 1, or change surah when settings allow.'
+                  : 'You finished the Qur’an (An-Nās). Use Start again to begin again from Al-Fātiḥah 1:1.'
+                : 'Mark complete logs today for your streak and moves the card to the next āyah (within your reading scope). Tap again anytime you finish another verse.'}
             </p>
             <div className="relative mt-8 flex h-56 w-56 shrink-0 items-center justify-center sm:mt-10 sm:h-72 sm:w-72">
               <div className="absolute inset-0 rounded-full border-[14px] border-surface-container opacity-50 sm:border-[18px]" />
@@ -180,14 +211,36 @@ export function DashboardPage() {
               </div>
             </div>
             <div className="relative z-10 mt-4 flex w-full max-w-xs flex-col items-center gap-2">
-              <button
-                type="button"
-                onClick={() => void onMarkComplete()}
-                disabled={markLoading}
-                className="w-full rounded-full bg-gradient-to-r from-primary to-primary-container px-5 py-3 text-sm font-semibold text-on-primary shadow-lg transition hover:opacity-95 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-60"
-              >
-                {markLoading ? 'Saving…' : markSaved ? 'Saved for today' : 'Mark complete'}
-              </button>
+              {atScopeLimit ? (
+                <>
+                  <p className="w-full rounded-2xl border border-outline-variant/20 bg-surface-container-high/40 px-4 py-2 text-center text-xs font-semibold text-on-surface-variant">
+                    {isSingleSurahScope ? 'End of this surah' : 'End of the Qur’an'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void onRestartReading()}
+                    disabled={restartLoading}
+                    className="w-full rounded-full bg-gradient-to-r from-primary to-primary-container px-5 py-3 text-sm font-semibold text-on-primary shadow-lg transition hover:opacity-95 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-60"
+                  >
+                    {restartLoading
+                      ? 'Restarting…'
+                      : isSingleSurahScope
+                        ? user?.reading_scope_surah != null
+                          ? `Start again — surah ${user.reading_scope_surah} · āyah 1`
+                          : 'Start again from āyah 1'
+                        : 'Start again from Al-Fātiḥah (1:1)'}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void onMarkComplete()}
+                  disabled={markLoading}
+                  className="w-full rounded-full bg-gradient-to-r from-primary to-primary-container px-5 py-3 text-sm font-semibold text-on-primary shadow-lg transition hover:opacity-95 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-60"
+                >
+                  {markLoading ? 'Saving…' : markSaved ? 'Saved for today' : 'Mark complete'}
+                </button>
+              )}
               {markError && <p className="text-center text-xs text-error">{markError}</p>}
               {markSaved && !markLoading && !markError && (
                 <p

@@ -52,6 +52,7 @@ export function App() {
           <Route path="/mentor" element={<MentorPage />} />
           <Route path="/insights" element={<InsightsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/settings/reading" element={<OnboardingPage />} />
           <Route path="/config" element={<ConfigPage />} />
           </Route>
         </Route>

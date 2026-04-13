@@ -7,19 +7,26 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
 import { useAuth } from './AuthContext'
 import { useAppSession } from '../hooks/useAppSession'
-import { apiClient } from '../lib/apiClient'
 import type { HistoryMessage } from '../lib/apiTypes'
-import { fetchStreakSnapshotDeduped, fetchVerseBundleDeduped } from '../lib/engineDataCache'
+import {
+  fetchHistoryDeduped,
+  fetchStreakSnapshotDeduped,
+  fetchVerseBundleDeduped,
+  preloadAudioFromUrl,
+} from '../lib/engineDataCache'
 import { dailyAyahFromVerseKey, type DailyAyah, fillSurahMeta, getColdStartDailyAyah } from '../lib/mockData'
 import { scheduleIdleTask } from '../lib/scheduleIdle'
 
 /** Ayah text/audio enrichment from GET /verse (idle-scheduled so the shell paints first). */
-export type VerseEnrichmentStatus = 'pending' | 'ready' | 'unavailable'
+export type VerseEnrichmentStatus = 'pending' | 'text_ready' | 'ready' | 'unavailable'
+
+const TRANSLATION_LOADING_PLACEHOLDER = 'Loading translation…'
 
 type MoodAyahContextValue = {
   displayAyah: DailyAyah
@@ -30,6 +37,12 @@ type MoodAyahContextValue = {
   /** Session chat rows from GET /history (refreshed after each successful /chat). */
   sessionUserMessages: number
   sessionTotalMessages: number
+  /** User-authored lines from GET /history (deduped); stale on error until retry succeeds. */
+  sessionUserTexts: string[]
+  /** True while a non-silent history refresh is in flight (initial or explicit refresh). */
+  sessionHistoryLoading: boolean
+  /** Last non-silent fetch failed; data may be stale. */
+  sessionHistoryError: boolean
   refreshSessionChatStats: () => Promise<void>
   /** Engine GET /verse for the focus ayah: pending until idle prefetch finishes. */
   verseEnrichmentStatus: VerseEnrichmentStatus
@@ -47,8 +60,23 @@ export function MoodAyahProvider({ children }: { children: ReactNode }) {
   const [streakCount, setStreakCount] = useState(0)
   const [sessionUserMessages, setSessionUserMessages] = useState(0)
   const [sessionTotalMessages, setSessionTotalMessages] = useState(0)
+  const [sessionUserTexts, setSessionUserTexts] = useState<string[]>([])
+  const [sessionHistoryLoading, setSessionHistoryLoading] = useState(false)
+  const [sessionHistoryError, setSessionHistoryError] = useState(false)
   const [verseEnrichmentStatus, setVerseEnrichmentStatus] = useState<VerseEnrichmentStatus>('pending')
   const [ayahsMarkedToday, setAyahsMarkedToday] = useState(0)
+
+  const historyRetryGenRef = useRef(0)
+  const historyRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const historyLoadSeqRef = useRef(0)
+
+  const applyHistoryMessages = useCallback((data: HistoryMessage[]) => {
+    const texts = data.filter((m) => m.role === 'user').map((m) => m.content.trim()).filter(Boolean)
+    setSessionTotalMessages(data.length)
+    setSessionUserMessages(texts.length)
+    setSessionUserTexts(texts)
+    setSessionHistoryError(false)
+  }, [])
 
   const syncStreakCount = useCallback((n: number) => {
     setStreakCount(typeof n === 'number' && !Number.isNaN(n) ? n : 0)
@@ -58,20 +86,95 @@ export function MoodAyahProvider({ children }: { children: ReactNode }) {
     setAyahsMarkedToday(typeof n === 'number' && !Number.isNaN(n) && n >= 0 ? n : 0)
   }, [])
 
-  const refreshSessionChatStats = useCallback(async () => {
-    try {
-      const { data } = await apiClient.get<HistoryMessage[]>(`/history/${sessionId}`)
-      setSessionTotalMessages(data.length)
-      setSessionUserMessages(data.filter((m) => m.role === 'user').length)
-    } catch {
-      setSessionTotalMessages(0)
-      setSessionUserMessages(0)
+  const cancelHistoryRetries = useCallback(() => {
+    historyRetryGenRef.current += 1
+    if (historyRetryTimeoutRef.current !== null) {
+      clearTimeout(historyRetryTimeoutRef.current)
+      historyRetryTimeoutRef.current = null
     }
-  }, [sessionId])
+  }, [])
 
+  const scheduleHistoryRetries = useCallback(
+    (genAtSchedule: number) => {
+      let attempt = 0
+      const run = () => {
+        if (genAtSchedule !== historyRetryGenRef.current) return
+        attempt += 1
+        if (attempt > 3) return
+        const delayMs = Math.min(2000 * 2 ** (attempt - 1), 16000)
+        historyRetryTimeoutRef.current = setTimeout(() => {
+          historyRetryTimeoutRef.current = null
+          if (genAtSchedule !== historyRetryGenRef.current) return
+          void fetchHistoryDeduped(sessionId)
+            .then((data) => {
+              if (genAtSchedule !== historyRetryGenRef.current) return
+              startTransition(() => applyHistoryMessages(data))
+            })
+            .catch(() => {
+              if (genAtSchedule !== historyRetryGenRef.current) return
+              run()
+            })
+        }, delayMs)
+      }
+      run()
+    },
+    [applyHistoryMessages, sessionId],
+  )
+
+  const refreshSessionChatStats = useCallback(async () => {
+    cancelHistoryRetries()
+    const gen = historyRetryGenRef.current
+    const loadSeq = ++historyLoadSeqRef.current
+    startTransition(() => setSessionHistoryLoading(true))
+    try {
+      const data = await fetchHistoryDeduped(sessionId)
+      if (gen !== historyRetryGenRef.current) return
+      startTransition(() => applyHistoryMessages(data))
+    } catch {
+      if (gen !== historyRetryGenRef.current) return
+      startTransition(() => setSessionHistoryError(true))
+      scheduleHistoryRetries(gen)
+    } finally {
+      startTransition(() => {
+        if (loadSeq === historyLoadSeqRef.current) setSessionHistoryLoading(false)
+      })
+    }
+  }, [applyHistoryMessages, cancelHistoryRetries, scheduleHistoryRetries, sessionId])
+
+  /** Idle-first history load; bounded background retries on failure (silent). */
   useEffect(() => {
-    void refreshSessionChatStats()
-  }, [refreshSessionChatStats])
+    cancelHistoryRetries()
+    const gen = historyRetryGenRef.current
+    let cancelled = false
+    const h = scheduleIdleTask(
+      () => {
+        if (cancelled) return
+        const loadSeq = ++historyLoadSeqRef.current
+        startTransition(() => setSessionHistoryLoading(true))
+        void fetchHistoryDeduped(sessionId)
+          .then((data) => {
+            if (cancelled || gen !== historyRetryGenRef.current) return
+            startTransition(() => applyHistoryMessages(data))
+          })
+          .catch(() => {
+            if (cancelled || gen !== historyRetryGenRef.current) return
+            startTransition(() => setSessionHistoryError(true))
+            scheduleHistoryRetries(gen)
+          })
+          .finally(() => {
+            startTransition(() => {
+              if (loadSeq === historyLoadSeqRef.current) setSessionHistoryLoading(false)
+            })
+          })
+      },
+      { timeoutMs: 400, delayMs: 0 },
+    )
+    return () => {
+      cancelled = true
+      h.cancel()
+      cancelHistoryRetries()
+    }
+  }, [sessionId, applyHistoryMessages, cancelHistoryRetries, scheduleHistoryRetries])
 
   /** Server reading cursor or legacy recommended key (GET /auth/me). */
   useEffect(() => {
@@ -116,20 +219,49 @@ export function MoodAyahProvider({ children }: { children: ReactNode }) {
             const ar = bundle.verse_text_uthmani?.trim()
             const tr = bundle.verse_translation?.trim()
             const au = bundle.audio_url?.trim()
+
             startTransition(() => {
-              if (ar || tr || au) {
+              if (!ar && !tr && !au) {
+                setDisplayAyah((prev) => fillSurahMeta(prev))
+                setVerseEnrichmentStatus('unavailable')
+                return
+              }
+
+              if (ar) {
                 setDisplayAyah((prev) =>
                   fillSurahMeta({
                     ...prev,
-                    arabic: ar || prev.arabic,
-                    translation: tr || prev.translation,
-                    audioUrl: au || prev.audioUrl,
+                    arabic: ar,
+                    translation: TRANSLATION_LOADING_PLACEHOLDER,
                   }),
                 )
-              } else {
-                setDisplayAyah((prev) => fillSurahMeta(prev))
+                setVerseEnrichmentStatus('text_ready')
+              } else if (tr) {
+                setDisplayAyah((prev) =>
+                  fillSurahMeta({
+                    ...prev,
+                    translation: tr,
+                  }),
+                )
+                setVerseEnrichmentStatus('text_ready')
               }
-              setVerseEnrichmentStatus('ready')
+
+              queueMicrotask(() => {
+                if (cancelled) return
+                startTransition(() => {
+                  setDisplayAyah((prev) =>
+                    fillSurahMeta({
+                      ...prev,
+                      translation:
+                        tr ||
+                        (prev.translation === TRANSLATION_LOADING_PLACEHOLDER ? '…' : prev.translation),
+                      audioUrl: au || prev.audioUrl,
+                    }),
+                  )
+                  setVerseEnrichmentStatus('ready')
+                  preloadAudioFromUrl(au)
+                })
+              })
             })
           })
           .catch(() => {
@@ -141,7 +273,7 @@ export function MoodAyahProvider({ children }: { children: ReactNode }) {
             }
           })
       },
-      { timeoutMs: 1600, delayMs: 0 },
+      { timeoutMs: 400, delayMs: 0 },
     )
     return () => {
       cancelled = true
@@ -157,6 +289,9 @@ export function MoodAyahProvider({ children }: { children: ReactNode }) {
       syncStreakCount,
       sessionUserMessages,
       sessionTotalMessages,
+      sessionUserTexts,
+      sessionHistoryLoading,
+      sessionHistoryError,
       refreshSessionChatStats,
       verseEnrichmentStatus,
       ayahsMarkedToday,
@@ -167,6 +302,9 @@ export function MoodAyahProvider({ children }: { children: ReactNode }) {
       refreshSessionChatStats,
       sessionTotalMessages,
       sessionUserMessages,
+      sessionUserTexts,
+      sessionHistoryLoading,
+      sessionHistoryError,
       streakCount,
       syncStreakCount,
       verseEnrichmentStatus,

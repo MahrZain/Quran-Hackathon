@@ -22,6 +22,7 @@ from app.models.schemas import (
     ChatResponse,
     ChatVerseCard,
     HistoryMessage,
+    StreakActivityOut,
     StreakRequest,
     StreakResponse,
     StreakSnapshot,
@@ -153,6 +154,28 @@ async def chat_message(
         len(verses),
     )
     return ChatMessageResponse(answer=answer, verses=verses)
+
+
+@router.get("/streak/{session_id}/activities", response_model=list[StreakActivityOut])
+def streak_activities_list(
+    session_id: UUID,
+    limit: int = Query(120, ge=1, le=500),
+    db: Session = Depends(get_db),
+    user: User | None = Depends(get_current_user_optional),
+) -> list[StreakActivityOut]:
+    """Recent mark-complete days (newest first) for the habit / history ledger."""
+    sid = _effective_session_id(db, user, str(session_id))
+    rows = (
+        db.execute(
+            select(StreakActivity)
+            .where(StreakActivity.session_id == sid)
+            .order_by(StreakActivity.activity_date.desc())
+            .limit(limit)
+        )
+        .scalars()
+        .all()
+    )
+    return [StreakActivityOut.model_validate(r) for r in rows]
 
 
 @router.get("/streak/{session_id}", response_model=StreakSnapshot)

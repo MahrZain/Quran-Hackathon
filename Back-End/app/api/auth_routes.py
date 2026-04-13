@@ -28,8 +28,10 @@ from app.services.onboarding_policy import recommended_verse_key
 from app.services.reading_cursor_service import (
     ayahs_marked_today,
     clamp_ayah_to_surah,
+    cursor_at_reading_scope_end,
     effective_current_verse_key,
     parse_verse_key,
+    restart_reading_cursor,
     seed_reading_cursor_from_legacy,
 )
 
@@ -44,6 +46,7 @@ def _build_user_me(user: User, db: Session | None = None) -> UserMe:
     if db is not None:
         marked = ayahs_marked_today(db, user.id)
     cvk = effective_current_verse_key(user)
+    at_end = cursor_at_reading_scope_end(user)
     return UserMe(
         id=user.id,
         email=user.email,
@@ -59,6 +62,7 @@ def _build_user_me(user: User, db: Session | None = None) -> UserMe:
         reading_scope=user.reading_scope,
         reading_scope_surah=user.reading_scope_surah,
         ayahs_marked_today=marked,
+        at_reading_scope_end=at_end,
     )
 
 
@@ -399,12 +403,41 @@ def me(
     return _build_user_me(user, db)
 
 
+@router.post("/me/reading-restart", response_model=UserMe)
+def reading_restart(
+    user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_db),
+) -> UserMe:
+    """Reset sequential reading cursor to the beginning of the current scope (1:1 or surah 1)."""
+    if user.onboarding_completed_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Complete onboarding before restarting reading",
+        )
+    changed = seed_reading_cursor_from_legacy(db, user)
+    if changed:
+        db.commit()
+        db.refresh(user)
+    if user.reading_cursor_surah is None or user.reading_cursor_ayah is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No reading cursor to restart; complete onboarding again if needed",
+        )
+    restart_reading_cursor(user)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    log.info("reading_restarted user_id=%s scope=%s cursor=%s:%s", user.id, user.reading_scope, user.reading_cursor_surah, user.reading_cursor_ayah)
+    return _build_user_me(user, db)
+
+
 @router.patch("/me/onboarding", response_model=UserMe)
 def complete_onboarding(
     body: OnboardingCompleteRequest,
     user: Annotated[User, Depends(get_current_user)],
     db: Session = Depends(get_db),
 ) -> UserMe:
+    """First-time onboarding or updating reading preferences (same payload; overwrites cursor/start)."""
     now = datetime.now(timezone.utc).replace(tzinfo=None)
 
     if body.goal in ("habit", "reading"):
