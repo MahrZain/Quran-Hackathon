@@ -141,22 +141,22 @@ export function ChatPage() {
   }, [draft, sendMessage])
 
   return (
-    <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col px-4">
-      <header className="mb-3 shrink-0">
-        <h1 className="font-serif text-2xl font-semibold text-primary">Quran companion</h1>
-        <p className="text-sm text-on-surface/65">
-          Your only ASAR chat for this session—grounded verses when the API finds matches; streak is unchanged here.{' '}
-          <strong className="font-medium text-on-surface/80">Focus mode</strong> is read-only (verse only); open this
-          page to ask questions.
-        </p>
-      </header>
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-2xl flex-1 flex-col px-3 sm:px-4">
+      {/* Single card: everything inside the box; only the thread scrolls */}
+      <div className="flex min-h-0 max-h-full flex-1 flex-col overflow-hidden rounded-bento border border-outline-variant/25 bg-surface-container-low shadow-ambient">
+        <header className="shrink-0 border-b border-outline-variant/15 px-4 pb-3 pt-4 sm:px-5 sm:pt-5">
+          <h1 className="font-serif text-xl font-semibold text-primary sm:text-2xl">Quran companion</h1>
+          <p className="mt-1.5 text-xs leading-snug text-on-surface/65 sm:text-sm">
+            Grounded verses when the API finds them; streak unchanged.{' '}
+            <strong className="font-medium text-on-surface/80">Focus mode</strong> is read-only—chat here only.
+          </p>
+        </header>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden rounded-bento bg-surface-container-low p-4 shadow-ambient">
         <div
           ref={listRef}
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]"
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 [scrollbar-gutter:stable]"
         >
-          <div className="flex min-h-min flex-col gap-3">
+          <div className="flex min-h-min flex-col gap-3 py-3">
           {hydrating ? (
             <p className="text-center text-sm text-on-surface/55">Loading your conversation…</p>
           ) : rows.length === 0 && !sending ? (
@@ -220,14 +220,15 @@ export function ChatPage() {
           </div>
         </div>
         {!hydrating && rows.length > 0 ? (
-          <ChatSamplePrompts
-            prompts={allChatSamplePrompts}
-            disabled={sending}
-            onPick={(text) => void sendMessage(text)}
-            className="shrink-0 border-t border-outline-variant/10 pt-3"
-          />
+          <div className="shrink-0 border-t border-outline-variant/15 bg-surface-container-low px-4 py-3 sm:px-5">
+            <ChatSamplePrompts
+              prompts={allChatSamplePrompts}
+              disabled={sending}
+              onPick={(text) => void sendMessage(text)}
+            />
+          </div>
         ) : null}
-        <div className="flex shrink-0 gap-2 border-t border-outline-variant/10 pt-3">
+        <div className="flex shrink-0 gap-2 border-t border-outline-variant/15 bg-surface-container-low px-4 py-3 sm:px-5">
           <input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}

@@ -29,7 +29,7 @@ export function QuranOAuthLanding() {
 
   if (err) {
     return (
-      <div className="flex min-h-svh flex-col items-center justify-center bg-surface px-6 text-center">
+      <div className="flex h-full min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto bg-surface px-6 text-center">
         <p className="font-headline text-lg text-primary">Sign-in incomplete</p>
         <p className="mt-2 text-sm text-on-surface-variant">{err}</p>
         <button
@@ -44,7 +44,7 @@ export function QuranOAuthLanding() {
   }
 
   return (
-    <div className="flex min-h-svh items-center justify-center bg-surface text-on-surface-variant">
+    <div className="flex h-full min-h-0 flex-1 items-center justify-center bg-surface text-on-surface-variant">
       Completing sign-in…
     </div>
   )

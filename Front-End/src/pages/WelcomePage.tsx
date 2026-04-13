@@ -26,7 +26,7 @@ export function WelcomePage() {
   }
 
   return (
-    <div className="relative flex min-h-svh w-full flex-col items-center justify-center overflow-x-hidden bg-surface py-8 text-on-surface">
+    <div className="relative flex h-full min-h-0 w-full flex-1 flex-col items-center justify-center overflow-x-hidden overflow-y-auto bg-surface py-8 text-on-surface">
       <div className="fixed inset-0 z-0">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-primary-fixed-dim/20 via-surface to-surface" />
         <div className="absolute bottom-0 left-0 right-0 h-2/3 bg-gradient-to-t from-surface-container-low/50 to-transparent" />

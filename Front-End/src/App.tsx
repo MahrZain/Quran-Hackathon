@@ -22,6 +22,7 @@ import { WelcomePage } from './pages/WelcomePage'
 export function App() {
   return (
     <LazyMotion features={domAnimation} strict>
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
     <Routes>
       <Route path="/welcome/oauth" element={<QuranOAuthLanding />} />
       <Route path="/login" element={<Navigate to="/welcome" replace />} />
@@ -58,6 +59,7 @@ export function App() {
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </div>
     </LazyMotion>
   )
 }

@@ -21,15 +21,15 @@
   }
 
   html {
-    @apply antialiased;
+    @apply h-full antialiased;
   }
 
   body {
-    @apply m-0 min-h-svh overflow-x-hidden overflow-y-auto bg-surface text-on-surface font-body;
+    @apply m-0 h-full max-h-full overflow-x-hidden overflow-y-hidden bg-surface text-on-surface font-body;
   }
 
   #root {
-    @apply flex min-h-svh min-h-0 flex-col;
+    @apply flex h-full min-h-0 flex-col overflow-hidden;
   }
 
   .material-symbols-outlined {

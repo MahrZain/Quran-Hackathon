@@ -220,14 +220,14 @@ export function OnboardingPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-svh items-center justify-center bg-surface text-sm text-on-surface/60">
+      <div className="flex h-full min-h-0 flex-1 items-center justify-center bg-surface text-sm text-on-surface/60">
         Loading your profile…
       </div>
     )
   }
 
   return (
-    <div className="relative flex min-h-svh flex-col bg-surface text-on-surface">
+    <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-y-auto bg-surface text-on-surface">
       <div className="fixed inset-0 z-0 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-primary-fixed-dim/15 via-surface to-surface" />
       <header className="relative z-10 border-b border-outline-variant/10 px-4 py-4 sm:px-8">
         <div className="mx-auto flex max-w-lg flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">

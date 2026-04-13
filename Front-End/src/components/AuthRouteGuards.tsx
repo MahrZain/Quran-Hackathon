@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 
 function AuthRouteSplash() {
   return (
-    <div className="flex min-h-svh items-center justify-center bg-surface text-sm text-on-surface/60">
+    <div className="flex h-full min-h-0 flex-1 items-center justify-center bg-surface text-sm text-on-surface/60">
       Checking session…
     </div>
   )
