@@ -53,6 +53,11 @@ def _decode_pkce_cookie(raw: str) -> dict:
     return jwt.decode(raw, s.jwt_secret_key, algorithms=[s.jwt_algorithm])
 
 
+def _pkce_cookie_secure(s: Settings) -> bool:
+    """Match OAuth redirect scheme so browsers keep / clear the PKCE cookie correctly on HTTPS."""
+    return (s.quran_oauth_redirect_uri or "").strip().lower().startswith("https://")
+
+
 def _ensure_demo_user(db: Session) -> User:
     s = get_settings()
     email = s.demo_user_email.strip().lower()
@@ -210,11 +215,13 @@ def quran_oauth_start() -> RedirectResponse:
     )
     dest = f"{auth_url}?{qs}"
     ret = RedirectResponse(url=dest, status_code=status.HTTP_302_FOUND)
+    sec = _pkce_cookie_secure(s)
     ret.set_cookie(
         "asar_oauth_pkce",
         _pkce_cookie_value(verifier, state),
         max_age=600,
         httponly=True,
+        secure=sec,
         samesite="lax",
         path="/",
     )
@@ -331,7 +338,13 @@ async def quran_oauth_callback(
         url=f"{oauth_front}#asar_token={urllib.parse.quote(asar_jwt, safe='')}&expires_in={expires_in}",
         status_code=status.HTTP_302_FOUND,
     )
-    ret.delete_cookie("asar_oauth_pkce", path="/")
+    ret.delete_cookie(
+        "asar_oauth_pkce",
+        path="/",
+        secure=_pkce_cookie_secure(s),
+        httponly=True,
+        samesite="lax",
+    )
     return ret
 
 

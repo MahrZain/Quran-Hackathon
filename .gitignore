@@ -18,3 +18,4 @@ Back-End/.env.*
 Front-End/.env
 Front-End/.env.*
 !Front-End/.env.example
+!Front-End/.env.production.example

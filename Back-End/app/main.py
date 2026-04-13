@@ -16,6 +16,20 @@ from app.services import ai_service, quran_service
 setup_logging()
 log = logging.getLogger(__name__)
 
+
+def _cors_allow_origins() -> list[str]:
+    s = get_settings()
+    raw = (s.cors_origins or "").strip()
+    if raw:
+        return [o.strip().rstrip("/") for o in raw.split(",") if o.strip()]
+    return [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+    ]
+
+
 _s = get_settings()
 if len(_s.jwt_secret_key) < 24 or "change-me" in _s.jwt_secret_key.lower():
     log.warning(
@@ -50,12 +64,7 @@ app = FastAPI(title="ASAR Engine", version="1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-    ],
+    allow_origins=_cors_allow_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

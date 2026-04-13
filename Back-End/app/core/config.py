@@ -1,10 +1,15 @@
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    # Comma-separated browser origins allowed for CORS (credentials). If empty, dev defaults only — set in production.
+    # Example: https://fnwholesale.pk,https://www.fnwholesale.pk
+    cors_origins: str = ""
 
     database_url: str = "sqlite:///./asar.db"
 
@@ -61,6 +66,24 @@ class Settings(BaseSettings):
     enable_demo_login: bool = True
     demo_user_email: str = "demo@asar.local"
     demo_user_password: str = "AsarJudge2026!"
+
+    @model_validator(mode="after")
+    def _mirror_quran_client_credentials(self) -> "Settings":
+        """
+        Quran Foundation often issues one pre-live client for both client_credentials (content)
+        and authorization_code (Continue with Quran.com). Allow filling only QURAN_OAUTH_* or only QURAN_*.
+        """
+        oid, uid = (self.quran_oauth_client_id or "").strip(), (self.quran_client_id or "").strip()
+        osec, usec = (self.quran_oauth_client_secret or "").strip(), (self.quran_client_secret or "").strip()
+        if oid and not uid:
+            self.quran_client_id = oid
+        elif uid and not oid:
+            self.quran_oauth_client_id = uid
+        if osec and not usec:
+            self.quran_client_secret = osec
+        elif usec and not osec:
+            self.quran_oauth_client_secret = usec
+        return self
 
 
 @lru_cache
