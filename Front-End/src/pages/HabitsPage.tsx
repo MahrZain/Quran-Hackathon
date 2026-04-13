@@ -65,7 +65,6 @@ function countThisUtcWeek(activities: StreakActivityItem[]): number {
   const now = new Date()
   const dow = now.getUTCDay()
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - dow))
-  const startKey = utcYmd(start)
   const set = new Set(activities.map((a) => a.activity_date))
   let n = 0
   for (let i = 0; i < 7; i++) {

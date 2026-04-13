@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { QuranAyahText } from '../components/QuranAyahText'
 import { apiClient } from '../lib/apiClient'
 import type { ChapterSummary, VerseBundleResponse } from '../lib/apiTypes'
+import { addBookmark, hasBookmark, removeBookmark } from '../lib/bookmarks'
 import { fetchVerseBundleDeduped } from '../lib/engineDataCache'
 
 const LAST_READ_KEY = 'asar_last_read'
@@ -118,6 +119,23 @@ export function ReaderPage() {
 
   const invalidSurah = !Number.isFinite(id) || id < 1 || id > 114
 
+  const [bookmarked, setBookmarked] = useState(false)
+  useEffect(() => {
+    if (invalidSurah) return
+    setBookmarked(hasBookmark(id, ayahClamped))
+  }, [id, ayahClamped, invalidSurah])
+
+  const toggleBookmark = () => {
+    if (invalidSurah) return
+    if (hasBookmark(id, ayahClamped)) {
+      removeBookmark(id, ayahClamped)
+      setBookmarked(false)
+    } else {
+      addBookmark({ surah: id, ayah: ayahClamped })
+      setBookmarked(true)
+    }
+  }
+
   return (
     <div className="mx-auto max-w-xl px-4">
       <Link
@@ -180,6 +198,17 @@ export function ReaderPage() {
         {!invalidSurah && (
           <nav className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-outline-variant/15 pt-6 text-sm">
             <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => toggleBookmark()}
+                className={`rounded-full border px-4 py-2 font-medium transition ${
+                  bookmarked
+                    ? 'border-secondary bg-secondary/15 text-secondary'
+                    : 'border-outline-variant/30 text-primary hover:bg-surface-container-high'
+                }`}
+              >
+                {bookmarked ? 'Bookmarked' : 'Bookmark'}
+              </button>
               {prevAyah !== null ? (
                 <Link
                   to={`/quran/${id}?ayah=${prevAyah}`}

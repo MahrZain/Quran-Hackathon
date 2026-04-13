@@ -12,19 +12,21 @@ function parse(raw: string | null): QuranBookmark[] {
   try {
     const o = JSON.parse(raw) as unknown
     if (!Array.isArray(o)) return []
-    return o
-      .map((x) => {
-        if (!x || typeof x !== 'object') return null
-        const r = x as Record<string, unknown>
-        const surah = Number(r.surah)
-        const ayah = Number(r.ayah)
-        const addedAt = typeof r.addedAt === 'string' ? r.addedAt : ''
-        const note = typeof r.note === 'string' ? r.note : undefined
-        if (!Number.isFinite(surah) || surah < 1 || surah > 114) return null
-        if (!Number.isFinite(ayah) || ayah < 1) return null
-        return { surah, ayah, addedAt: addedAt || new Date().toISOString(), note } satisfies QuranBookmark
-      })
-      .filter((x): x is QuranBookmark => x !== null)
+    const out: QuranBookmark[] = []
+    for (const x of o) {
+      if (!x || typeof x !== 'object') continue
+      const r = x as Record<string, unknown>
+      const surah = Number(r.surah)
+      const ayah = Number(r.ayah)
+      const addedAt = typeof r.addedAt === 'string' ? r.addedAt : ''
+      const note = typeof r.note === 'string' ? r.note : undefined
+      if (!Number.isFinite(surah) || surah < 1 || surah > 114) continue
+      if (!Number.isFinite(ayah) || ayah < 1) continue
+      const b: QuranBookmark = { surah, ayah, addedAt: addedAt || new Date().toISOString() }
+      if (note) b.note = note
+      out.push(b)
+    }
+    return out
   } catch {
     return []
   }
