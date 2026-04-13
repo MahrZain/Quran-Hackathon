@@ -10,11 +10,12 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { useAuth } from './AuthContext'
 import { useAppSession } from '../hooks/useAppSession'
 import { apiClient } from '../lib/apiClient'
 import type { HistoryMessage } from '../lib/apiTypes'
 import { fetchStreakSnapshotDeduped, fetchVerseBundleDeduped } from '../lib/engineDataCache'
-import { type DailyAyah, getColdStartDailyAyah } from '../lib/mockData'
+import { dailyAyahFromVerseKey, type DailyAyah, fillSurahMeta, getColdStartDailyAyah } from '../lib/mockData'
 import { scheduleIdleTask } from '../lib/scheduleIdle'
 
 /** Ayah text/audio enrichment from GET /verse (idle-scheduled so the shell paints first). */
@@ -32,20 +33,29 @@ type MoodAyahContextValue = {
   refreshSessionChatStats: () => Promise<void>
   /** Engine GET /verse for the focus ayah: pending until idle prefetch finishes. */
   verseEnrichmentStatus: VerseEnrichmentStatus
+  /** Mark-complete taps today (UTC, from server) — drives part of the dashboard ring. */
+  ayahsMarkedToday: number
+  syncAyahsMarkedToday: (n: number) => void
 }
 
 const MoodAyahContext = createContext<MoodAyahContextValue | null>(null)
 
 export function MoodAyahProvider({ children }: { children: ReactNode }) {
   const { sessionId } = useAppSession()
+  const { user } = useAuth()
   const [displayAyah, setDisplayAyah] = useState<DailyAyah>(() => getColdStartDailyAyah())
   const [streakCount, setStreakCount] = useState(0)
   const [sessionUserMessages, setSessionUserMessages] = useState(0)
   const [sessionTotalMessages, setSessionTotalMessages] = useState(0)
   const [verseEnrichmentStatus, setVerseEnrichmentStatus] = useState<VerseEnrichmentStatus>('pending')
+  const [ayahsMarkedToday, setAyahsMarkedToday] = useState(0)
 
   const syncStreakCount = useCallback((n: number) => {
     setStreakCount(typeof n === 'number' && !Number.isNaN(n) ? n : 0)
+  }, [])
+
+  const syncAyahsMarkedToday = useCallback((n: number) => {
+    setAyahsMarkedToday(typeof n === 'number' && !Number.isNaN(n) && n >= 0 ? n : 0)
   }, [])
 
   const refreshSessionChatStats = useCallback(async () => {
@@ -62,6 +72,22 @@ export function MoodAyahProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refreshSessionChatStats()
   }, [refreshSessionChatStats])
+
+  /** Server reading cursor or legacy recommended key (GET /auth/me). */
+  useEffect(() => {
+    const key = user?.current_verse_key || user?.recommended_verse_key
+    if (!key || !/^\d+:\d+$/.test(key)) return
+    startTransition(() => {
+      setDisplayAyah(fillSurahMeta(dailyAyahFromVerseKey(key)))
+    })
+  }, [user?.current_verse_key, user?.recommended_verse_key, user?.id])
+
+  useEffect(() => {
+    const n = user?.ayahs_marked_today
+    if (typeof n === 'number' && !Number.isNaN(n)) {
+      startTransition(() => syncAyahsMarkedToday(n))
+    }
+  }, [user?.ayahs_marked_today, user?.id, syncAyahsMarkedToday])
 
   /** Streak snapshot: starts immediately (deduped); UI update is non-urgent. */
   useEffect(() => {
@@ -92,18 +118,27 @@ export function MoodAyahProvider({ children }: { children: ReactNode }) {
             const au = bundle.audio_url?.trim()
             startTransition(() => {
               if (ar || tr || au) {
-                setDisplayAyah((prev) => ({
-                  ...prev,
-                  arabic: ar || prev.arabic,
-                  translation: tr || prev.translation,
-                  audioUrl: au || prev.audioUrl,
-                }))
+                setDisplayAyah((prev) =>
+                  fillSurahMeta({
+                    ...prev,
+                    arabic: ar || prev.arabic,
+                    translation: tr || prev.translation,
+                    audioUrl: au || prev.audioUrl,
+                  }),
+                )
+              } else {
+                setDisplayAyah((prev) => fillSurahMeta(prev))
               }
               setVerseEnrichmentStatus('ready')
             })
           })
           .catch(() => {
-            if (!cancelled) startTransition(() => setVerseEnrichmentStatus('unavailable'))
+            if (!cancelled) {
+              startTransition(() => {
+                setDisplayAyah((prev) => fillSurahMeta(prev))
+                setVerseEnrichmentStatus('unavailable')
+              })
+            }
           })
       },
       { timeoutMs: 1600, delayMs: 0 },
@@ -124,6 +159,8 @@ export function MoodAyahProvider({ children }: { children: ReactNode }) {
       sessionTotalMessages,
       refreshSessionChatStats,
       verseEnrichmentStatus,
+      ayahsMarkedToday,
+      syncAyahsMarkedToday,
     }),
     [
       displayAyah,
@@ -133,6 +170,8 @@ export function MoodAyahProvider({ children }: { children: ReactNode }) {
       streakCount,
       syncStreakCount,
       verseEnrichmentStatus,
+      ayahsMarkedToday,
+      syncAyahsMarkedToday,
     ],
   )
 

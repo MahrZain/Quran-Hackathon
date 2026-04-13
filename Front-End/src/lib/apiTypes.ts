@@ -44,6 +44,11 @@ export type StreakResponse = {
   updated_streak_count: number
   message: string
   quran_foundation_synced?: boolean
+  next_verse_key?: string | null
+  next_surah_id?: number | null
+  next_ayah_number?: number | null
+  ayahs_marked_today?: number
+  at_scope_end?: boolean
 }
 
 export type TokenResponse = {
@@ -52,11 +57,47 @@ export type TokenResponse = {
   expires_in: number
 }
 
+export type OnboardingGoal = 'habit' | 'reading' | 'understand' | 'listen'
+export type OnboardingLevel = 'beginner' | 'intermediate' | 'daily_learner' | 'regular'
+export type OnboardingTimeBudget = '1' | '3' | '5_plus'
+export type OnboardingJourneyMode = 'beginning' | 'daily_bites' | 'topic'
+export type OnboardingTopicTag = 'patience' | 'stress' | 'gratitude' | 'hope' | 'fear' | 'general'
+export type ReadingScope = 'full_mushaf' | 'single_surah'
+export type StartLocation = 'beginning' | 'custom'
+
+export type OnboardingCompletePayload = {
+  goal: OnboardingGoal
+  level: OnboardingLevel
+  /** Simplified flow: habit / reading */
+  reading_scope?: ReadingScope | null
+  start_location?: StartLocation | null
+  start_surah?: number | null
+  start_ayah?: number | null
+  scope_surah?: number | null
+  /** Legacy understand / listen */
+  time_budget?: OnboardingTimeBudget | null
+  journey_mode?: OnboardingJourneyMode | null
+  topic_tag?: OnboardingTopicTag | null
+}
+
 export type UserMe = {
   id: number
   email: string
   /** Server-owned session for chat/streak/history when authenticated. */
   asar_session_id: string
+  onboarding_completed: boolean
+  onboarding_goal?: string | null
+  onboarding_level?: string | null
+  onboarding_time_budget?: string | null
+  onboarding_journey_mode?: string | null
+  onboarding_topic_tag?: string | null
+  /** Legacy policy-based key when cursor not set. */
+  recommended_verse_key?: string | null
+  /** Authoritative dashboard position after sequential reading onboarding. */
+  current_verse_key?: string | null
+  reading_scope?: string | null
+  reading_scope_surah?: number | null
+  ayahs_marked_today?: number
 }
 
 export type VerseBundleResponse = {

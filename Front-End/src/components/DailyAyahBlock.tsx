@@ -1,9 +1,10 @@
+import { ArrowRight } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMoodAyah } from '../context/MoodAyahContext'
 import { QuranAyahText } from './QuranAyahText'
 import { useSound } from '../hooks/useSound'
-import type { DailyAyah } from '../lib/mockData'
+import { fillSurahMeta, type DailyAyah } from '../lib/mockData'
 
 type DailyAyahBlockProps = {
   ayah: DailyAyah
@@ -19,7 +20,8 @@ export function DailyAyahBlock({ ayah, className = '' }: DailyAyahBlockProps) {
   const [audioBusy, setAudioBusy] = useState(false)
   const [playErr, setPlayErr] = useState<string | null>(null)
 
-  const ref = `${ayah.surahName} • ${ayah.surahId}:${ayah.ayahNumber}`
+  const meta = fillSurahMeta(ayah)
+  const ref = `${meta.surahName} · ${meta.surahId}:${meta.ayahNumber}`
   const focusHref = `/focus?surah=${ayah.surahId}&ayah=${ayah.ayahNumber}`
   const readerHref = `/quran/${ayah.surahId}?ayah=${ayah.ayahNumber}`
 
@@ -98,6 +100,7 @@ export function DailyAyahBlock({ ayah, className = '' }: DailyAyahBlockProps) {
             <span className="text-[10px] font-medium text-on-surface-variant/70">Using offline ayah text</span>
           ) : null}
         </div>
+        <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-4 sm:gap-6">
           <button
             type="button"
@@ -147,13 +150,19 @@ export function DailyAyahBlock({ ayah, className = '' }: DailyAyahBlockProps) {
           <Link
             prefetch="viewport"
             to="/insights"
-            className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-on-primary shadow-[0_0_22px_rgba(212,175,55,0.45)] ring-2 ring-accent-gold/35 transition hover:shadow-[0_0_28px_rgba(212,175,55,0.55)] hover:ring-accent-gold/55 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            aria-label="Open AI insight results page for this session and spotlight verse"
+            className="inline-flex items-center gap-2 rounded-xl border border-primary/40 bg-surface-container-low px-4 py-2.5 text-sm font-semibold text-primary transition hover:border-primary hover:bg-primary/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            19-sec Summary
-            <span className="material-symbols-outlined text-base" aria-hidden>
+            <span className="material-symbols-outlined text-base text-secondary" aria-hidden>
               auto_awesome
             </span>
+            AI insights
+            <ArrowRight className="h-4 w-4 opacity-70" aria-hidden />
           </Link>
+        </div>
+        <p className="text-[10px] leading-snug text-on-surface-variant/75">
+          Opens the insights page (session themes, streak rhythm, verse prompt)—not an on-card timer.
+        </p>
         </div>
       </div>
     </div>

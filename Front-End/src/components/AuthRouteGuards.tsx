@@ -1,4 +1,4 @@
-import { Navigate, Outlet } from 'react-router-dom'
+import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { useAuth } from '../context/AuthContext'
 
@@ -24,4 +24,19 @@ export function RequireAppAccess() {
   if (loading) return <AuthRouteSplash />
   if (user) return <Outlet />
   return <Navigate to="/welcome" replace />
+}
+
+/**
+ * After auth, block shell routes until onboarding is complete.
+ * `/onboarding` is a sibling route (not wrapped here).
+ */
+export function OnboardingGate() {
+  const { user, loading } = useAuth()
+  const location = useLocation()
+  if (loading) return <AuthRouteSplash />
+  if (!user) return <Navigate to="/welcome" replace state={{ from: location }} />
+  if (!user.onboarding_completed) {
+    return <Navigate to="/onboarding" replace state={{ from: location }} />
+  }
+  return <Outlet />
 }

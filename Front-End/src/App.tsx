@@ -1,6 +1,6 @@
 import { LazyMotion, domAnimation } from 'framer-motion'
 import { Navigate, Route, Routes } from 'react-router-dom'
-import { RedirectIfAuthed, RequireAppAccess } from './components/AuthRouteGuards'
+import { OnboardingGate, RedirectIfAuthed, RequireAppAccess } from './components/AuthRouteGuards'
 import { AppShell } from './layouts/AppShell'
 import { ChatPage } from './pages/ChatPage'
 import { CommunityPage } from './pages/CommunityPage'
@@ -17,6 +17,7 @@ import { ReaderPage } from './pages/ReaderPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { SupportPage } from './pages/SupportPage'
 import { QuranOAuthLanding } from './pages/QuranOAuthLanding'
+import { OnboardingPage } from './pages/OnboardingPage'
 import { WelcomePage } from './pages/WelcomePage'
 
 export function App() {
@@ -35,7 +36,9 @@ export function App() {
         }
       />
       <Route element={<RequireAppAccess />}>
-        <Route element={<AppShell />}>
+        <Route path="/onboarding" element={<OnboardingPage />} />
+        <Route element={<OnboardingGate />}>
+          <Route element={<AppShell />}>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/dhikr" element={<DhikrPage />} />
           <Route path="/community" element={<CommunityPage />} />
@@ -50,6 +53,7 @@ export function App() {
           <Route path="/insights" element={<InsightsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/config" element={<ConfigPage />} />
+          </Route>
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

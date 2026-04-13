@@ -51,7 +51,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     try {
       const { data } = await apiClient.get<UserMe>('/auth/me')
-      setUser(data)
+      setUser({
+        ...data,
+        onboarding_completed: Boolean(data.onboarding_completed),
+      })
       try {
         if (data.asar_session_id) {
           localStorage.setItem(SESSION_STORAGE_KEY, data.asar_session_id)

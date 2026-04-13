@@ -7,6 +7,7 @@ import { useAppSession } from '../hooks/useAppSession'
 import { apiClient } from '../lib/apiClient'
 import type { HistoryMessage } from '../lib/apiTypes'
 import { buildInsightCards, type InsightCardModel } from '../lib/deriveInsights'
+import { fillSurahMeta } from '../lib/mockData'
 
 function iconFor(kind: InsightCardModel['kind']) {
   if (kind === 'themes') return Link2
@@ -42,17 +43,16 @@ export function InsightsPage() {
     }
   }, [sessionId, pathname])
 
-  const cards = useMemo(
-    () =>
-      buildInsightCards({
-        userMessages: userTexts,
-        streakCount,
-        heartCheckIns: userTexts.length,
-        currentSurahName: displayAyah.surahName,
-        currentVerseKey: `${displayAyah.surahId}:${displayAyah.ayahNumber}`,
-      }),
-    [userTexts, streakCount, displayAyah.surahName, displayAyah.surahId, displayAyah.ayahNumber],
-  )
+  const cards = useMemo(() => {
+    const ayah = fillSurahMeta(displayAyah)
+    return buildInsightCards({
+      userMessages: userTexts,
+      streakCount,
+      heartCheckIns: userTexts.length,
+      currentSurahName: ayah.surahName,
+      currentVerseKey: `${ayah.surahId}:${ayah.ayahNumber}`,
+    })
+  }, [userTexts, streakCount, displayAyah])
 
   return (
     <div className="mx-auto max-w-3xl px-4">

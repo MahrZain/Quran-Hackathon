@@ -3,11 +3,13 @@ import { Link } from 'react-router-dom'
 import { DailyAyahBlock } from '../components/DailyAyahBlock'
 import { DailyFlowRing } from '../components/DailyFlowRing'
 import { StreakConstellation } from '../components/StreakConstellation'
+import { useAuth } from '../context/AuthContext'
 import { useMoodAyah } from '../context/MoodAyahContext'
 import { useAppSession } from '../hooks/useAppSession'
 import { apiClient } from '../lib/apiClient'
 import type { StreakResponse } from '../lib/apiTypes'
 import { asarE2eTrace } from '../lib/asarE2eTrace'
+import { dailyAyahFromVerseKey, fillSurahMeta, getDailyAyahFromTopicTag } from '../lib/mockData'
 import { constellationDaysFromStreak } from '../lib/streakHelpers'
 
 const heroImg =
@@ -17,20 +19,40 @@ const streakImg =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCpet3_At_K755v5oBSjznFncU8blzW4AT2DS7kvI6mXrSfeNjmRyXDUQV7v_G7A_XhO6-bywNe3taRFuQyFGttyNjkL_1V-i63cEiZbm-Jwpr9R5I8uSjc9bRlJ9XYb54qqix8hjuCsAax1Xz5vxVFiZcMBRdorynj4cOPtFHukTu3HAuDrlgnTV5kywsllh0k0bSx5-HD__0wzdVYRISTLA9AsH11LqeCmrWbNIvqPjz1J2Bk_IRDY_q9DqFIb-9N7YyAUL-3P78'
 
 export function DashboardPage() {
-  const { displayAyah, streakCount, syncStreakCount, sessionUserMessages, sessionTotalMessages } = useMoodAyah()
+  const { user, refreshUser } = useAuth()
+  const {
+    displayAyah,
+    setDisplayAyah,
+    streakCount,
+    syncStreakCount,
+    sessionUserMessages,
+    sessionTotalMessages,
+    ayahsMarkedToday,
+    syncAyahsMarkedToday,
+  } = useMoodAyah()
   const { sessionId } = useAppSession()
   const [constellationDays, setConstellationDays] = useState(() => constellationDaysFromStreak(0))
   const [markLoading, setMarkLoading] = useState(false)
   const [markError, setMarkError] = useState<string | null>(null)
   const [markSaved, setMarkSaved] = useState(false)
   const [qfToast, setQfToast] = useState(false)
+  const [streakUnchangedHint, setStreakUnchangedHint] = useState(false)
+  const [scopeEndHint, setScopeEndHint] = useState(false)
   const markSavedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const qfToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const streakHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  /** 0 streak = cold start ring at 0%; then scale from a small baseline for returning users. */
-  const flowPercent =
-    streakCount === 0 ? 0 : Math.min(100, Math.round(18 + streakCount * 12))
-  const engagementPoints = sessionUserMessages * 12 + streakCount * 20
+  /**
+   * Ring: streak continuity (up to ~55%) plus āyāt marked today (up to ~55%), capped at 100%.
+   * Same-day extra marks grow the ring without faking streak days.
+   */
+  const flowPercent = Math.min(
+    100,
+    Math.round(
+      (streakCount === 0 ? 0 : Math.min(55, 10 + streakCount * 9)) + Math.min(55, ayahsMarkedToday * 14),
+    ),
+  )
+  const engagementPoints = sessionUserMessages * 12 + streakCount * 20 + ayahsMarkedToday * 8
   const streakSubtitle =
     streakCount === 0
       ? 'Start your streak'
@@ -46,13 +68,17 @@ export function DashboardPage() {
     return () => {
       if (markSavedTimerRef.current) clearTimeout(markSavedTimerRef.current)
       if (qfToastTimerRef.current) clearTimeout(qfToastTimerRef.current)
+      if (streakHintTimerRef.current) clearTimeout(streakHintTimerRef.current)
     }
   }, [])
 
   const onMarkComplete = useCallback(async () => {
     setMarkError(null)
     setMarkSaved(false)
+    setStreakUnchangedHint(false)
+    setScopeEndHint(false)
     setMarkLoading(true)
+    const countBefore = streakCount
     const ayah_read = `${displayAyah.surahId}:${displayAyah.ayahNumber}`
     try {
       asarE2eTrace('STEP 4 — POST /streak (Mark complete)', { session_id: sessionId, ayah_read })
@@ -61,6 +87,15 @@ export function DashboardPage() {
         ayah_read,
       })
       syncStreakCount(data.updated_streak_count)
+      setStreakUnchangedHint(data.updated_streak_count === countBefore)
+      if (typeof data.ayahs_marked_today === 'number') {
+        syncAyahsMarkedToday(data.ayahs_marked_today)
+      }
+      if (data.next_verse_key && /^\d+:\d+$/.test(data.next_verse_key)) {
+        setDisplayAyah(fillSurahMeta(dailyAyahFromVerseKey(data.next_verse_key)))
+      }
+      setScopeEndHint(Boolean(data.at_scope_end))
+      void refreshUser()
       asarE2eTrace('STEP 4 — streak logged (SQLite streak_activities)', {
         ok: data.ok,
         updated_streak_count: data.updated_streak_count,
@@ -80,12 +115,26 @@ export function DashboardPage() {
         setMarkSaved(false)
         markSavedTimerRef.current = null
       }, 3500)
+      if (streakHintTimerRef.current) clearTimeout(streakHintTimerRef.current)
+      streakHintTimerRef.current = setTimeout(() => {
+        setStreakUnchangedHint(false)
+        streakHintTimerRef.current = null
+      }, 6000)
     } catch {
       setMarkError('Could not log streak. Is the ASAR Engine running on port 8000?')
     } finally {
       setMarkLoading(false)
     }
-  }, [displayAyah.ayahNumber, displayAyah.surahId, sessionId, syncStreakCount])
+  }, [
+    displayAyah.ayahNumber,
+    displayAyah.surahId,
+    sessionId,
+    streakCount,
+    syncStreakCount,
+    syncAyahsMarkedToday,
+    setDisplayAyah,
+    refreshUser,
+  ])
 
   return (
     <div className="relative mx-auto max-w-7xl">
@@ -111,7 +160,8 @@ export function DashboardPage() {
               Heart Alignment
             </p>
             <p className="mt-3 max-w-xs text-center text-[11px] leading-snug text-on-surface-variant/75">
-              Log today&apos;s reading for your streak. You can tap again if your focus verse changes.
+              Mark complete logs today for your streak and moves the card to the next āyah (within your reading scope).
+              Tap again anytime you finish another verse.
             </p>
             <div className="relative mt-8 flex h-56 w-56 shrink-0 items-center justify-center sm:mt-10 sm:h-72 sm:w-72">
               <div className="absolute inset-0 rounded-full border-[14px] border-surface-container opacity-50 sm:border-[18px]" />
@@ -140,14 +190,41 @@ export function DashboardPage() {
               </button>
               {markError && <p className="text-center text-xs text-error">{markError}</p>}
               {markSaved && !markLoading && !markError && (
-                <p className="text-center text-xs font-medium text-primary/90">Streak updated in your ledger.</p>
+                <p
+                  className={`text-center text-xs leading-snug ${
+                    streakUnchangedHint ? 'text-on-surface-variant' : 'font-medium text-primary/90'
+                  }`}
+                >
+                  {scopeEndHint ? (
+                    <>
+                      Saved. You&apos;re at the <strong>end of your reading scope</strong> — the streak still counts;
+                      stay on this verse or change scope in settings when we add it.
+                    </>
+                  ) : streakUnchangedHint ? (
+                    <>
+                      Saved. Your <strong>streak number</strong> didn&apos;t change (same calendar day), but the
+                      dashboard advanced to your <strong>next āyah</strong>.
+                    </>
+                  ) : (
+                    <>Saved — streak updated and the next āyah is on the card.</>
+                  )}
+                </p>
               )}
+              {user?.onboarding_topic_tag ? (
+                <button
+                  type="button"
+                  className="mt-1 text-center text-xs font-semibold text-secondary hover:underline"
+                  onClick={() => setDisplayAyah(getDailyAyahFromTopicTag(user.onboarding_topic_tag!))}
+                >
+                  Load an āyah for my theme ({user.onboarding_topic_tag})
+                </button>
+              ) : null}
               <Link
                 prefetch="viewport"
                 to={`/quran/${displayAyah.surahId}?ayah=${displayAyah.ayahNumber}`}
                 className="mt-2 text-center text-xs font-semibold text-primary/85 hover:text-primary hover:underline"
               >
-                Open in reader · {displayAyah.surahName} {displayAyah.surahId}:{displayAyah.ayahNumber}
+                Open in reader · {fillSurahMeta(displayAyah).surahName} {displayAyah.surahId}:{displayAyah.ayahNumber}
               </Link>
             </div>
           </div>
@@ -157,14 +234,18 @@ export function DashboardPage() {
               <div className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
                 Heart check-ins
               </div>
-              <p className="mt-1 text-[10px] leading-snug text-on-surface-variant/80">Mood messages you sent ASAR</p>
+              <p className="mt-1 text-[10px] leading-snug text-on-surface-variant/80">
+                User messages in Quran companion — not updated by Mark complete.
+              </p>
             </div>
             <div>
               <div className="text-lg font-bold text-secondary sm:text-xl">{sessionTotalMessages}</div>
               <div className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
                 Session turns
               </div>
-              <p className="mt-1 text-[10px] leading-snug text-on-surface-variant/80">Total chat rows this session</p>
+              <p className="mt-1 text-[10px] leading-snug text-on-surface-variant/80">
+                All chat rows (you + ASAR) in Quran companion this session.
+              </p>
             </div>
           </div>
         </div>
@@ -202,8 +283,8 @@ export function DashboardPage() {
                 <span className="ml-1 text-xs font-medium uppercase text-emerald-400/60">
                   Engagement
                 </span>
-                <p className="mt-0.5 max-w-[10rem] text-[9px] leading-tight text-emerald-500/50">
-                  From streak + heart check-ins (this session)
+                <p className="mt-0.5 max-w-[11rem] text-[9px] leading-tight text-emerald-500/50">
+                  Streak and āyāt marked today boost this score; heart check-ins add more (Quran companion only).
                 </p>
               </div>
             </div>

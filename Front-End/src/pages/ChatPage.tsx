@@ -7,6 +7,7 @@ import { useAppSession } from '../hooks/useAppSession'
 import { apiClient } from '../lib/apiClient'
 import type { ChatMessageResponse, ChatVerseCard, HistoryMessage } from '../lib/apiTypes'
 import { apiErrorMessage } from '../lib/apiErrors'
+import { useAuth } from '../context/AuthContext'
 import { useMoodAyah } from '../context/MoodAyahContext'
 
 type Row =
@@ -42,6 +43,7 @@ function AyahCard({ v }: { v: ChatVerseCard }) {
 }
 
 export function ChatPage() {
+  const { user } = useAuth()
   const { sessionId } = useAppSession()
   const { refreshSessionChatStats } = useMoodAyah()
   const location = useLocation()
@@ -154,10 +156,27 @@ export function ChatPage() {
           {hydrating ? (
             <p className="text-center text-sm text-on-surface/55">Loading your conversation…</p>
           ) : rows.length === 0 && !sending ? (
-            <p className="text-center text-sm text-on-surface/55">
-              Ask about a theme, a surah name, or paste a verse reference (e.g. 2:286). Replies stay within the verses
-              shown below each answer when available.
-            </p>
+            <div className="flex flex-col items-center gap-4 text-center">
+              <p className="text-sm text-on-surface/55">
+                Ask about a theme, a surah name, or paste a verse reference (e.g. 2:286). Replies stay within the verses
+                shown below each answer when available.
+              </p>
+              {user?.onboarding_topic_tag ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="max-w-xs text-xs"
+                  disabled={sending || hydrating}
+                  onClick={() =>
+                    void sendMessage(
+                      `Please help me reflect on "${user.onboarding_topic_tag}" with relevant Quranic verses.`,
+                    )
+                  }
+                >
+                  Start with my onboarding theme
+                </Button>
+              ) : null}
+            </div>
           ) : (
             <>
               {rows.map((msg, i) => (

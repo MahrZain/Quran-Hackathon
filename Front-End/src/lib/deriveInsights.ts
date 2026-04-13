@@ -47,10 +47,14 @@ export function buildInsightCards(input: {
         ? `Your logged streak is ${input.streakCount} day${input.streakCount === 1 ? '' : 's'}. Marking an āyah complete after dhikr keeps the loop visible on the dashboard.`
         : 'Start with “Mark complete” on the dashboard after a short read, then revisit the mentor—continuity builds clearer guidance.'
 
-  const prompt =
-    input.currentVerseKey && input.currentSurahName
-      ? `Your spotlight āyah is ${input.currentSurahName} (${input.currentVerseKey}). Try one narrow question for the mentor about that verse only—context stays grounded and answers stay short.`
-      : 'Open Quran progress, pick a surah, then ask the mentor about a single āyah—narrow questions keep the sanctuary clear.'
+  const verseKey = (input.currentVerseKey || '').trim()
+  const hasVerseKey = /^\d+:\d+$/.test(verseKey)
+  const surahLabel = (input.currentSurahName || '').trim()
+  const prompt = hasVerseKey
+    ? surahLabel
+      ? `Your spotlight āyah is ${surahLabel} (${verseKey}). Try one narrow question for the mentor about that verse only—context stays grounded and answers stay short.`
+      : `Your spotlight āyah is ${verseKey}. Try one narrow question for the mentor about that verse only—context stays grounded and answers stay short.`
+    : 'Open Quran progress, pick a surah, then ask the mentor about a single āyah—narrow questions keep the sanctuary clear.'
 
   return [
     { title: 'Thematic echo', body: thematic, kind: 'themes' },

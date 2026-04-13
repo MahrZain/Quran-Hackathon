@@ -22,12 +22,44 @@ from app.core.config import Settings, get_settings
 from app.core.security import create_access_token, hash_password, verify_password
 from app.db.database import get_db
 from app.models.domain import User
-from app.models.schemas import TokenResponse, UserMe
+from app.models.schemas import OnboardingCompleteRequest, RecommendedVerseResponse, TokenResponse, UserMe
 from app.services import quran_service, quran_user_service
+from app.services.onboarding_policy import recommended_verse_key
+from app.services.reading_cursor_service import (
+    ayahs_marked_today,
+    clamp_ayah_to_surah,
+    effective_current_verse_key,
+    parse_verse_key,
+    seed_reading_cursor_from_legacy,
+)
 
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _build_user_me(user: User, db: Session | None = None) -> UserMe:
+    sid = (user.asar_session_id or "").strip()
+    marked = 0
+    if db is not None:
+        marked = ayahs_marked_today(db, user.id)
+    cvk = effective_current_verse_key(user)
+    return UserMe(
+        id=user.id,
+        email=user.email,
+        asar_session_id=sid,
+        onboarding_completed=user.onboarding_completed_at is not None,
+        onboarding_goal=user.onboarding_goal,
+        onboarding_level=user.onboarding_level,
+        onboarding_time_budget=user.onboarding_time_budget,
+        onboarding_journey_mode=user.onboarding_journey_mode,
+        onboarding_topic_tag=user.onboarding_topic_tag,
+        recommended_verse_key=recommended_verse_key(user),
+        current_verse_key=cvk,
+        reading_scope=user.reading_scope,
+        reading_scope_surah=user.reading_scope_surah,
+        ayahs_marked_today=marked,
+    )
 
 
 def ensure_demo_account_ready(db: Session) -> None:
@@ -360,4 +392,117 @@ def me(
         db.refresh(user)
     sid = (user.asar_session_id or "").strip()
     assert sid, "asar_session_id must be set for /auth/me"
-    return UserMe(id=user.id, email=user.email, asar_session_id=sid)
+    changed = seed_reading_cursor_from_legacy(db, user)
+    if changed:
+        db.commit()
+        db.refresh(user)
+    return _build_user_me(user, db)
+
+
+@router.patch("/me/onboarding", response_model=UserMe)
+def complete_onboarding(
+    body: OnboardingCompleteRequest,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_db),
+) -> UserMe:
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    if body.goal in ("habit", "reading"):
+        rs = body.reading_scope or "full_mushaf"
+        if rs not in ("full_mushaf", "single_surah"):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="reading_scope must be full_mushaf or single_surah",
+            )
+        sl = body.start_location or "beginning"
+        if rs == "single_surah" and body.scope_surah is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="scope_surah is required when reading_scope is single_surah",
+            )
+        if sl == "beginning":
+            if rs == "single_surah":
+                assert body.scope_surah is not None
+                start_s, start_a = body.scope_surah, 1
+            else:
+                start_s, start_a = 1, 1
+        else:
+            if body.start_surah is None or body.start_ayah is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="start_surah and start_ayah are required when start_location is custom",
+                )
+            start_s, start_a = clamp_ayah_to_surah(body.start_surah, body.start_ayah)
+            if rs == "single_surah" and body.scope_surah is not None and start_s != body.scope_surah:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="start_surah must match scope_surah for single_surah mode",
+                )
+
+        user.onboarding_goal = body.goal
+        user.onboarding_level = body.level
+        user.onboarding_time_budget = body.time_budget
+        user.onboarding_journey_mode = None
+        user.onboarding_topic_tag = None
+        user.reading_scope = rs
+        user.reading_scope_surah = body.scope_surah if rs == "single_surah" else None
+        user.reading_cursor_surah = start_s
+        user.reading_cursor_ayah = start_a
+        user.reading_start_surah = start_s
+        user.reading_start_ayah = start_a
+        user.onboarding_completed_at = now
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        log.info("onboarding_completed user_id=%s goal=%s reading=%s:%s", user.id, body.goal, start_s, start_a)
+        return _build_user_me(user, db)
+
+    if body.goal in ("understand", "listen"):
+        if not body.journey_mode:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="journey_mode is required for understand and listen goals",
+            )
+        journey = body.journey_mode
+        topic = body.topic_tag if journey == "topic" else None
+        if journey == "topic" and not topic:
+            topic = "general"
+        tb = body.time_budget or "3"
+        user.onboarding_goal = body.goal
+        user.onboarding_level = body.level
+        user.onboarding_time_budget = tb
+        user.onboarding_journey_mode = journey
+        user.onboarding_topic_tag = topic
+        user.onboarding_completed_at = now
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        key = recommended_verse_key(user)
+        if key:
+            parsed = parse_verse_key(key)
+            if parsed:
+                cs, ca = clamp_ayah_to_surah(*parsed)
+                user.reading_cursor_surah = cs
+                user.reading_cursor_ayah = ca
+                user.reading_start_surah = cs
+                user.reading_start_ayah = ca
+                user.reading_scope = "full_mushaf"
+                user.reading_scope_surah = None
+                db.add(user)
+                db.commit()
+                db.refresh(user)
+        log.info("onboarding_completed user_id=%s goal=%s", user.id, body.goal)
+        return _build_user_me(user, db)
+
+
+@router.get("/me/recommended-verse", response_model=RecommendedVerseResponse)
+def get_recommended_verse(
+    user: Annotated[User, Depends(get_current_user)],
+) -> RecommendedVerseResponse:
+    key = effective_current_verse_key(user)
+    if not key:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Complete onboarding first",
+        )
+    return RecommendedVerseResponse(verse_key=key)

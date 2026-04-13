@@ -28,6 +28,14 @@ from app.models.schemas import (
     VerseBundleResponse,
 )
 from app.services import ai_service, chat_rag_rest, quran_service, quran_user_service
+from app.services.reading_cursor_service import (
+    advance_user_cursor_after_mark,
+    clamp_ayah_to_surah,
+    format_verse_key,
+    increment_daily_marks,
+    parse_verse_key,
+    seed_reading_cursor_from_legacy,
+)
 from app.services.streak_logic import compute_streak_count
 
 log = logging.getLogger(__name__)
@@ -237,7 +245,15 @@ async def streak(
     _ensure_session(db, sid)
 
     d = payload.activity_date or datetime.now(timezone.utc).date()
-    ayah = payload.ayah_read.strip()
+
+    if user is not None:
+        seed_reading_cursor_from_legacy(db, user)
+
+    parsed = parse_verse_key(payload.ayah_read.strip())
+    if not parsed:
+        raise HTTPException(status_code=422, detail="ayah_read must look like surah:ayah")
+    ms, ma = clamp_ayah_to_surah(*parsed)
+    ayah = format_verse_key(ms, ma)
 
     existing = db.execute(
         select(StreakActivity).where(StreakActivity.session_id == sid, StreakActivity.activity_date == d)
@@ -246,6 +262,16 @@ async def streak(
         existing.ayah_read = ayah
     else:
         db.add(StreakActivity(session_id=sid, activity_date=d, ayah_read=ayah))
+
+    ayahs_today = 0
+    at_scope_end = False
+    if user is not None and user.onboarding_completed_at:
+        ayahs_today = increment_daily_marks(db, user.id, d)
+        if user.reading_cursor_surah is not None:
+            prog = advance_user_cursor_after_mark(db, user, ms, ma)
+            at_scope_end = prog.at_scope_end
+            db.add(user)
+
     db.commit()
 
     quran_synced = False
@@ -263,10 +289,21 @@ async def streak(
             log.warning("Quran Foundation streak sync raised (suppressed)", exc_info=True)
 
     count = compute_streak_count(sid, db)
+
+    next_s = next_a = None
+    if user is not None and user.reading_cursor_surah is not None and user.reading_cursor_ayah is not None:
+        next_s, next_a = user.reading_cursor_surah, user.reading_cursor_ayah
+    next_key = format_verse_key(next_s, next_a) if next_s is not None and next_a is not None else None
+
     log.info("streak ok session=%s ayah=%s count=%d quran_synced=%s", sid, ayah, count, quran_synced)
     return StreakResponse(
         ok=True,
         updated_streak_count=count,
         message="Streak logged",
         quran_foundation_synced=quran_synced,
+        next_verse_key=next_key,
+        next_surah_id=next_s,
+        next_ayah_number=next_a,
+        ayahs_marked_today=ayahs_today,
+        at_scope_end=at_scope_end,
     )

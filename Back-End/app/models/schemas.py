@@ -96,6 +96,11 @@ class StreakResponse(BaseModel):
     updated_streak_count: int
     message: str = ""
     quran_foundation_synced: bool = False
+    next_verse_key: str | None = None
+    next_surah_id: int | None = None
+    next_ayah_number: int | None = None
+    ayahs_marked_today: int = 0
+    at_scope_end: bool = False
 
 
 class UserRegister(BaseModel):
@@ -118,5 +123,31 @@ class UserMe(BaseModel):
     id: int
     email: str
     asar_session_id: str
+    onboarding_completed: bool = False
+    onboarding_goal: str | None = None
+    onboarding_level: str | None = None
+    onboarding_time_budget: str | None = None
+    onboarding_journey_mode: str | None = None
+    onboarding_topic_tag: str | None = None
+    recommended_verse_key: str | None = None
+    current_verse_key: str | None = None
+    reading_scope: str | None = None
+    reading_scope_surah: int | None = None
+    ayahs_marked_today: int = 0
 
-    model_config = {"from_attributes": True}
+
+class OnboardingCompleteRequest(BaseModel):
+    goal: Literal["habit", "reading", "understand", "listen"]
+    level: Literal["beginner", "intermediate", "daily_learner", "regular"]
+    reading_scope: Literal["full_mushaf", "single_surah"] | None = None
+    start_location: Literal["beginning", "custom"] | None = None
+    start_surah: int | None = Field(None, ge=1, le=114)
+    start_ayah: int | None = Field(None, ge=1)
+    scope_surah: int | None = Field(None, ge=1, le=114)
+    time_budget: Literal["1", "3", "5_plus"] | None = None
+    journey_mode: Literal["beginning", "daily_bites", "topic"] | None = None
+    topic_tag: Literal["patience", "stress", "gratitude", "hope", "fear", "general"] | None = None
+
+
+class RecommendedVerseResponse(BaseModel):
+    verse_key: str

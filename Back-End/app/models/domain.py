@@ -5,7 +5,7 @@ from datetime import date, datetime, timezone
 def _utc_naive_now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
-from sqlalchemy import Date, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -70,3 +70,35 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_naive_now)
     quran_access_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     quran_refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # First-time onboarding (nullable = not completed or legacy row)
+    onboarding_completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    onboarding_goal: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    onboarding_level: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    onboarding_time_budget: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    onboarding_journey_mode: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    onboarding_topic_tag: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Sequential reading (dashboard cursor); null until onboarding or legacy seed
+    reading_cursor_surah: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reading_cursor_ayah: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reading_start_surah: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reading_start_ayah: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reading_scope: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    reading_scope_surah: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    reading_daily_stats: Mapped[list["ReadingDailyStat"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class ReadingDailyStat(Base):
+    """Per-user UTC-day count of Mark complete taps (for dashboard ring / analytics)."""
+
+    __tablename__ = "reading_daily_stats"
+    __table_args__ = (UniqueConstraint("user_id", "activity_date", name="uq_reading_daily_user_day"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    activity_date: Mapped[date] = mapped_column(Date, index=True)
+    marks_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    user: Mapped["User"] = relationship(back_populates="reading_daily_stats")
