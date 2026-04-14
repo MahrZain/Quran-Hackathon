@@ -88,6 +88,9 @@ class User(Base):
     reading_daily_stats: Mapped[list["ReadingDailyStat"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    verse_bookmarks: Mapped[list["VerseBookmark"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class ReadingDailyStat(Base):
@@ -102,3 +105,36 @@ class ReadingDailyStat(Base):
     marks_count: Mapped[int] = mapped_column(Integer, default=0)
 
     user: Mapped["User"] = relationship(back_populates="reading_daily_stats")
+
+
+class QuranBookmarkSyncStatus(str, enum.Enum):
+    pending = "pending"
+    synced = "synced"
+    failed = "failed"
+
+
+class VerseBookmark(Base):
+    """Per-user saved verse; optional sync to Quran Foundation User API."""
+
+    __tablename__ = "verse_bookmarks"
+    __table_args__ = (UniqueConstraint("user_id", "surah_id", "ayah_number", name="uq_bookmark_user_verse"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    surah_id: Mapped[int] = mapped_column(Integer, index=True)
+    ayah_number: Mapped[int] = mapped_column(Integer, index=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_naive_now, index=True)
+    quran_bookmark_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    quran_sync_status: Mapped[QuranBookmarkSyncStatus] = mapped_column(
+        SAEnum(
+            QuranBookmarkSyncStatus,
+            native_enum=False,
+            values_callable=lambda x: [e.value for e in x],
+        ),
+        default=QuranBookmarkSyncStatus.pending,
+    )
+    quran_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_sync_error: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
+    user: Mapped["User"] = relationship(back_populates="verse_bookmarks")

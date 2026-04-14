@@ -35,6 +35,17 @@ export type HistoryMessage = {
   created_at: string
 }
 
+/** GET/POST /bookmarks — server-persisted verse bookmarks. */
+export type VerseBookmarkOut = {
+  id: number
+  surah_id: number
+  ayah_number: number
+  verse_key: string
+  note: string | null
+  created_at: string
+  quran_sync_status: 'pending' | 'synced' | 'failed'
+}
+
 export type StreakSnapshot = {
   updated_streak_count: number
 }

@@ -161,3 +161,21 @@ class OnboardingCompleteRequest(BaseModel):
 
 class RecommendedVerseResponse(BaseModel):
     verse_key: str
+
+
+class BookmarkCreate(BaseModel):
+    surah_id: int = Field(..., ge=1, le=114)
+    ayah_number: int = Field(..., ge=1)
+    note: str | None = Field(None, max_length=2000)
+
+
+class BookmarkOut(BaseModel):
+    id: int
+    surah_id: int
+    ayah_number: int
+    verse_key: str
+    note: str | None = None
+    created_at: datetime
+    quran_sync_status: Literal["pending", "synced", "failed"] = "pending"
+
+    model_config = ConfigDict(from_attributes=True)

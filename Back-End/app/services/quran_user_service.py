@@ -261,3 +261,193 @@ def oauth_authorize_endpoint(settings: Settings) -> str:
 def pkce_challenge_from_verifier(verifier: str) -> str:
     digest = hashlib.sha256(verifier.encode("utf-8")).digest()
     return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+
+
+def _bookmarks_collection_url(settings: Settings) -> str | None:
+    u = (settings.quran_bookmarks_url or "").strip()
+    if u:
+        return u.rstrip("/")
+    base = (settings.quran_user_api_base_url or "").strip().rstrip("/")
+    if not base:
+        return None
+    return f"{base}/auth/v1/bookmarks"
+
+
+def _user_api_request_headers(settings: Settings, access_token: str) -> dict[str, str]:
+    """Headers for Quran Foundation User API (bookmarks, activity, etc.)."""
+    cid = _effective_client_id(settings)
+    headers: dict[str, str] = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+    }
+    if cid:
+        headers["x-auth-token"] = access_token
+        headers["x-client-id"] = cid
+    tz = (settings.quran_activity_timezone or "").strip() or "Etc/UTC"
+    headers["x-timezone"] = tz
+    return headers
+
+
+def _extract_bookmark_remote_id(data: Any) -> str | None:
+    if not isinstance(data, dict):
+        return None
+    for key in ("id", "bookmarkId", "bookmark_id"):
+        v = data.get(key)
+        if v is not None and str(v).strip():
+            return str(v)
+    nested = data.get("data")
+    if isinstance(nested, dict):
+        return _extract_bookmark_remote_id(nested)
+    bm = data.get("bookmark")
+    if isinstance(bm, dict):
+        return _extract_bookmark_remote_id(bm)
+    return None
+
+
+def _bookmark_create_payload(verse_key: str, settings: Settings) -> dict[str, Any]:
+    """Body for POST /auth/v1/bookmarks (camelCase per User API examples)."""
+    vk = (verse_key or "").strip()
+    mid = int(settings.quran_activity_mushaf_id)
+    return {"verseKey": vk, "mushafId": mid}
+
+
+async def create_bookmark_on_quran_foundation(
+    db_session: Session,
+    user_record: User,
+    verse_key: str,
+    *,
+    _retry_after_refresh: bool = False,
+) -> tuple[bool, str | None]:
+    """
+    POST bookmark to Quran Foundation User API.
+    Returns (success, remote_id if returned by upstream).
+    """
+    settings = get_settings()
+    token = (user_record.quran_access_token or "").strip()
+    if not token:
+        return False, None
+
+    url = _bookmarks_collection_url(settings)
+    if not url:
+        log.warning("Quran bookmark create skipped: no bookmarks URL / user API base")
+        return False, None
+
+    headers = _user_api_request_headers(settings, token)
+    payload = _bookmark_create_payload(verse_key, settings)
+
+    try:
+        client = _client()
+        r = await client.post(url, json=payload, headers=headers, timeout=30.0)
+        if r.status_code == 401 and user_record.quran_refresh_token and not _retry_after_refresh:
+            try:
+                refreshed = await refresh_quran_tokens(user_record.quran_refresh_token.strip(), settings)
+            except Exception as e:
+                log.warning("Quran bookmark: token refresh failed after 401: %s", e)
+                return False, None
+            user_record.quran_access_token = refreshed["access_token"]
+            if refreshed.get("refresh_token"):
+                user_record.quran_refresh_token = str(refreshed["refresh_token"])
+            db_session.add(user_record)
+            db_session.commit()
+            db_session.refresh(user_record)
+            return await create_bookmark_on_quran_foundation(
+                db_session, user_record, verse_key, _retry_after_refresh=True
+            )
+        if r.status_code in (200, 201):
+            try:
+                body = r.json()
+            except Exception:
+                body = {}
+            if isinstance(body, dict) and body.get("success") is False:
+                log.warning("Quran bookmark create returned success=false: %s", body)
+                return False, None
+            rid = _extract_bookmark_remote_id(body) if isinstance(body, dict) else None
+            return True, rid
+        if r.status_code >= 400:
+            if r.status_code == 403 and "insufficient_scope" in (r.text or ""):
+                log.warning(
+                    "Quran bookmark 403 insufficient_scope — add `bookmark` to QURAN_OAUTH_AUTHORIZE_SCOPES "
+                    "and re-authorize. Response: %s",
+                    (r.text or "")[:400],
+                )
+            else:
+                log.warning(
+                    "Quran bookmark create HTTP %s: %s",
+                    r.status_code,
+                    (r.text or "")[:400],
+                )
+            return False, None
+    except httpx.HTTPError as e:
+        log.warning("Quran bookmark create request failed: %s", e)
+        return False, None
+    except Exception as e:
+        log.warning("Quran bookmark create unexpected error: %s", e)
+        return False, None
+
+
+async def delete_bookmark_on_quran_foundation(
+    db_session: Session,
+    user_record: User,
+    remote_id: str,
+    *,
+    _retry_after_refresh: bool = False,
+) -> bool:
+    rid = (remote_id or "").strip()
+    if not rid:
+        return False
+
+    settings = get_settings()
+    token = (user_record.quran_access_token or "").strip()
+    if not token:
+        return False
+
+    base = _bookmarks_collection_url(settings)
+    if not base:
+        log.warning("Quran bookmark delete skipped: no bookmarks URL / user API base")
+        return False
+
+    url = f"{base}/{rid}"
+    headers = _user_api_request_headers(settings, token)
+    headers.pop("Content-Type", None)
+
+    try:
+        client = _client()
+        r = await client.delete(url, headers=headers, timeout=30.0)
+        if r.status_code == 401 and user_record.quran_refresh_token and not _retry_after_refresh:
+            try:
+                refreshed = await refresh_quran_tokens(user_record.quran_refresh_token.strip(), settings)
+            except Exception as e:
+                log.warning("Quran bookmark delete: token refresh failed after 401: %s", e)
+                return False
+            user_record.quran_access_token = refreshed["access_token"]
+            if refreshed.get("refresh_token"):
+                user_record.quran_refresh_token = str(refreshed["refresh_token"])
+            db_session.add(user_record)
+            db_session.commit()
+            db_session.refresh(user_record)
+            return await delete_bookmark_on_quran_foundation(
+                db_session, user_record, remote_id, _retry_after_refresh=True
+            )
+        if r.status_code in (200, 204):
+            return True
+        if r.status_code == 404:
+            log.info("Quran bookmark delete: remote id not found (404), treating as ok")
+            return True
+        if r.status_code >= 400:
+            if r.status_code == 403 and "insufficient_scope" in (r.text or ""):
+                log.warning(
+                    "Quran bookmark delete 403 insufficient_scope — add `bookmark` scope and re-authorize."
+                )
+            else:
+                log.warning(
+                    "Quran bookmark delete HTTP %s: %s",
+                    r.status_code,
+                    (r.text or "")[:400],
+                )
+            return False
+    except httpx.HTTPError as e:
+        log.warning("Quran bookmark delete request failed: %s", e)
+        return False
+    except Exception as e:
+        log.warning("Quran bookmark delete unexpected error: %s", e)
+        return False

@@ -42,9 +42,11 @@ class Settings(BaseSettings):
     # Space-separated scopes for Continue with Quran.com — must match your Request Access client (invalid_scope if not).
     # Default matches https://api-docs.quran.foundation/docs/tutorials/oidc/user-apis-quickstart/ “Common scopes”.
     # If Quran Foundation enabled extra scopes for your app (e.g. activity_day), set QURAN_OAUTH_AUTHORIZE_SCOPES in .env.
-    quran_oauth_authorize_scopes: str = "openid offline_access user streak"
+    quran_oauth_authorize_scopes: str = "openid offline_access user streak bookmark"
     quran_oauth_redirect_uri: str = "http://127.0.0.1:8000/api/v1/auth/callback"
     quran_user_api_base_url: str = "https://apis-prelive.quran.foundation"
+    # Override if Foundation path differs (default: {quran_user_api_base_url}/auth/v1/bookmarks)
+    quran_bookmarks_url: str = ""
     # POST target for activity / streak sync (override if Foundation path differs)
     quran_activity_sync_post_url: str = ""
     # POST /auth/v1/activity-days body (see Quran Foundation “Add/update activity day” docs)

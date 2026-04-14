@@ -1,4 +1,8 @@
-const STORAGE_KEY = 'asar_bookmarks_v1'
+export const BOOKMARKS_LOCAL_STORAGE_KEY = 'asar_bookmarks_v1'
+/** Set after local device bookmarks are POSTed to ASAR API (one-time per browser). */
+export const BOOKMARKS_MERGED_TO_API_KEY = 'asar_bookmarks_merged_to_api_v1'
+
+const STORAGE_KEY = BOOKMARKS_LOCAL_STORAGE_KEY
 
 export type QuranBookmark = {
   surah: number

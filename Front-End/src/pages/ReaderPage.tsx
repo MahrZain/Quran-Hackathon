@@ -2,9 +2,11 @@ import { ChevronLeft } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { QuranAyahText } from '../components/QuranAyahText'
+import { useAuth } from '../context/AuthContext'
 import { apiClient } from '../lib/apiClient'
 import type { ChapterSummary, VerseBundleResponse } from '../lib/apiTypes'
 import { addBookmark, hasBookmark, removeBookmark } from '../lib/bookmarks'
+import { createBookmarkApi, deleteBookmarkApi, fetchBookmarks } from '../lib/bookmarksApi'
 import { fetchVerseBundleDeduped } from '../lib/engineDataCache'
 
 const LAST_READ_KEY = 'asar_last_read'
@@ -18,6 +20,7 @@ function saveLastRead(surah: number, ayah: number) {
 }
 
 export function ReaderPage() {
+  const { user } = useAuth()
   const { surahId } = useParams()
   const [sp] = useSearchParams()
   const navigate = useNavigate()
@@ -122,17 +125,44 @@ export function ReaderPage() {
   const [bookmarked, setBookmarked] = useState(false)
   useEffect(() => {
     if (invalidSurah) return
-    setBookmarked(hasBookmark(id, ayahClamped))
-  }, [id, ayahClamped, invalidSurah])
+    if (!user) {
+      setBookmarked(hasBookmark(id, ayahClamped))
+      return
+    }
+    let cancelled = false
+    void fetchBookmarks()
+      .then((rows) => {
+        if (cancelled) return
+        setBookmarked(rows.some((r) => r.surah_id === id && r.ayah_number === ayahClamped))
+      })
+      .catch(() => {
+        if (!cancelled) setBookmarked(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [user, id, ayahClamped, invalidSurah])
 
   const toggleBookmark = () => {
     if (invalidSurah) return
-    if (hasBookmark(id, ayahClamped)) {
-      removeBookmark(id, ayahClamped)
-      setBookmarked(false)
+    if (!user) {
+      if (hasBookmark(id, ayahClamped)) {
+        removeBookmark(id, ayahClamped)
+        setBookmarked(false)
+      } else {
+        addBookmark({ surah: id, ayah: ayahClamped })
+        setBookmarked(true)
+      }
+      return
+    }
+    if (bookmarked) {
+      void deleteBookmarkApi(id, ayahClamped)
+        .then(() => setBookmarked(false))
+        .catch(() => {})
     } else {
-      addBookmark({ surah: id, ayah: ayahClamped })
-      setBookmarked(true)
+      void createBookmarkApi({ surah_id: id, ayah_number: ayahClamped })
+        .then(() => setBookmarked(true))
+        .catch(() => {})
     }
   }
 

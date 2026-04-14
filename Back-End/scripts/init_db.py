@@ -16,6 +16,7 @@ from app.models.domain import (  # noqa: F401, E402
     StreakActivity,
     User,
     UserSession,
+    VerseBookmark,
 )
 
 
