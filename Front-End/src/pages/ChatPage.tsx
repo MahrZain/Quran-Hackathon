@@ -10,6 +10,7 @@ import { apiErrorMessage } from '../lib/apiErrors'
 import { useAuth } from '../context/AuthContext'
 import { useMoodAyah } from '../context/MoodAyahContext'
 import { ChatSamplePrompts } from '../components/ChatSamplePrompts'
+import { ChatSamplePromptsCollapsible } from '../components/ChatSamplePromptsCollapsible'
 import { allChatSamplePrompts } from '../lib/chatSamplePrompts'
 
 type Row =
@@ -258,15 +259,6 @@ export function ChatPage() {
           )}
           </div>
         </div>
-        {!hydrating && rows.length > 0 ? (
-          <div className="shrink-0 border-t border-outline-variant/15 bg-surface-container-low px-4 py-3 sm:px-5">
-            <ChatSamplePrompts
-              prompts={allChatSamplePrompts}
-              disabled={sending}
-              onPick={(text) => void sendMessage(text)}
-            />
-          </div>
-        ) : null}
         <div className="flex shrink-0 gap-2 border-t border-outline-variant/15 bg-surface-container-low px-4 py-3 sm:px-5">
           <input
             value={draft}
@@ -291,6 +283,14 @@ export function ChatPage() {
             <Send className="h-4 w-4" aria-hidden />
           </Button>
         </div>
+        {!hydrating && rows.length > 0 ? (
+          <ChatSamplePromptsCollapsible
+            prompts={allChatSamplePrompts}
+            disabled={sending}
+            defaultOpen={false}
+            onPick={(text) => void sendMessage(text)}
+          />
+        ) : null}
       </div>
     </div>
   )

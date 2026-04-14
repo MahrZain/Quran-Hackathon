@@ -8,6 +8,62 @@ import pytest
 from app.services import quran_service
 
 
+def test_verse_keys_surah_ikhlas_typo_whole_surah():
+    keys = quran_service.verse_keys_from_natural_language_query("tell me sura iklas", max_keys=8)
+    assert keys == ["112:1", "112:2", "112:3", "112:4"]
+
+
+def test_verse_keys_surah_112_number_only():
+    keys = quran_service.verse_keys_from_natural_language_query("surah 112 please", max_keys=8)
+    assert keys == ["112:1", "112:2", "112:3", "112:4"]
+
+
+def test_verse_keys_al_fatihah_ayah_5():
+    keys = quran_service.verse_keys_from_natural_language_query("al fatihah ayah 5", max_keys=8)
+    assert keys == ["1:5"]
+
+
+def test_verse_keys_numeric_colon():
+    assert quran_service.verse_keys_from_natural_language_query("see 1:5", max_keys=8) == ["1:5"]
+
+
+def test_verse_keys_surah_ad_duha_comma_before_ayah():
+    keys = quran_service.verse_keys_from_natural_language_query("Surah Ad-Duha, ayah 7", max_keys=8)
+    assert keys == ["93:7"]
+
+
+def test_verse_keys_first_ayah_of_quran():
+    keys = quran_service.verse_keys_from_natural_language_query("what is the first ayat of quran", max_keys=8)
+    assert keys == ["1:1"]
+
+
+def test_verse_keys_sura_iklash_typo():
+    keys = quran_service.verse_keys_from_natural_language_query("sura iklash", max_keys=8)
+    assert keys == ["112:1", "112:2", "112:3", "112:4"]
+
+
+def test_verse_payload_flat_and_resource_pick():
+    uth, tr = quran_service._verse_uthmani_and_translation_from_payload(
+        {"text_uthmani": "abc", "translations": [{"resource_id": 10, "text": "t10"}, {"resource_id": 20, "text": "t20"}]},
+        preferred_translation_resource_id=20,
+    )
+    assert uth == "abc" and tr == "t20"
+    uth2, tr2 = quran_service._verse_uthmani_and_translation_from_payload(
+        {"verse": {"text": "x", "translations": [{"text": "fallback"}]}},
+        preferred_translation_resource_id=99,
+    )
+    assert tr2 == "fallback"
+
+
+def test_search_hits_normalization():
+    body = {"search": {"results": [{"verse_key": " 2:255 "}]}}
+    rows = quran_service._search_result_dicts(body)
+    assert len(rows) == 1
+    assert quran_service._verse_key_from_search_hit(rows[0]) == "2:255"
+    nested = {"results": [{"verse": {"verse_key": "1:1"}}]}
+    assert quran_service._verse_key_from_search_hit(quran_service._search_result_dicts(nested)[0]) == "1:1"
+
+
 @pytest.fixture
 async def httpx_client():
     client = httpx.AsyncClient(timeout=httpx.Timeout(30.0))

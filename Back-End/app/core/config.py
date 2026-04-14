@@ -16,10 +16,22 @@ class Settings(BaseSettings):
     longcat_api_key: str = ""
     longcat_base_url: str = "https://api.longcat.chat/openai/v1"
     longcat_model: str = "LongCat-Flash-Lite"
+    # POST /chat/message only (other AI paths keep their own limits)
+    longcat_chat_max_tokens: int = 384
+    longcat_chat_temperature: float = 0.35
 
     quran_api_base_url: str = "https://api.quran.com/api/v4"
     quran_api_key: str = ""
     quran_translation_resource_id: int = 85
+    # Content API `language` query param (chapter metadata, verse payloads). ISO 639-1 e.g. en, ar, ur, fr.
+    quran_content_language: str = "en"
+    # When using a non-primary translation resource (e.g. Urdu resource id), set this to that locale (e.g. ur).
+    # Empty = reuse quran_content_language (works when primary and alternate share the same API language).
+    quran_secondary_content_language: str = ""
+    # Optional /search `language` filter; empty = omit (widest matching behavior on mixed hosts).
+    quran_search_language: str = ""
+    # Optional Urdu (or other) translation resource for /chat/message when user asks e.g. "in urdu". 0 = disabled.
+    quran_urdu_translation_resource_id: int = 0
     quran_default_verse_key: str = "1:1"
     quran_ai_max_verses: int = 3
     quran_user_activity_url: str = ""

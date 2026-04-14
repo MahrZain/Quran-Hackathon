@@ -12,14 +12,24 @@ type ChatSamplePromptsProps = {
   disabled?: boolean
   /** If true, chips only fill the input; if false, parent handles send on pick. */
   className?: string
+  /** When false, only chips render (e.g. inside a collapsible header). Default true. */
+  showTitle?: boolean
 }
 
-export function ChatSamplePrompts({ prompts, onPick, disabled, className = '' }: ChatSamplePromptsProps) {
+export function ChatSamplePrompts({
+  prompts,
+  onPick,
+  disabled,
+  className = '',
+  showTitle = true,
+}: ChatSamplePromptsProps) {
   return (
     <div className={`flex flex-col gap-2 ${className}`}>
-      <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
-        Sample prompts — tap to try
-      </p>
+      {showTitle ? (
+        <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+          Sample prompts — tap to try
+        </p>
+      ) : null}
       <div className="flex flex-wrap gap-2">
         {prompts.map((p) => (
           <button

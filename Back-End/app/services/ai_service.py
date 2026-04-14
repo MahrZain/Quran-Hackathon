@@ -257,12 +257,13 @@ async def generate_verified_chat_turn(session_id: str, user_message: str, db: Se
             audio_url=None,
         )
 
-    explicit_keys = quran_service.verse_keys_from_natural_language_query(text)
+    lim = max(1, int(settings.quran_ai_max_verses))
+    explicit_keys = quran_service.verse_keys_from_natural_language_query(text, max_keys=lim)
     if explicit_keys:
-        keys = explicit_keys[:5]
+        keys = explicit_keys[:lim]
     else:
         try:
-            keys = await quran_service.search_verse_keys(text, limit=5, settings=settings)
+            keys = await quran_service.search_verse_keys(text, limit=lim, settings=settings)
         except httpx.HTTPError as e:
             log.warning("Quran search failed for verified chat (upstream or public): %s", e)
             keys = []
