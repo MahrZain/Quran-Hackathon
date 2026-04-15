@@ -1,7 +1,7 @@
 import type { StreakConstellationDay } from './mockData'
 
-/** Map backend streak count to a row of constellation beads (last `width` days, filled from the right). */
-export function constellationDaysFromStreak(streakCount: number, width = 7): StreakConstellationDay[] {
+/** Map backend streak count to constellation beads (last `width` days, filled from the right). */
+export function constellationDaysFromStreak(streakCount: number, width = 30): StreakConstellationDay[] {
   const safe = Math.max(0, Math.floor(streakCount))
   const filled = Math.min(safe, width)
   const now = new Date()

@@ -59,6 +59,22 @@ export function SurahAyahPicker({
   const maxAyah = selectedChapter?.verses && selectedChapter.verses > 0 ? selectedChapter.verses : 286
   const ayahClamped = Math.min(Math.max(1, ayahNumber || 1), maxAyah)
 
+  if (lockSurahId != null && !lockedChapter) {
+    return (
+      <div className="mt-2 rounded-xl border border-outline-variant/20 bg-surface-container-low/60 px-4 py-3 text-sm text-on-surface-variant">
+        {chapters == null && !errorHint ? (
+          <p>Loading surah list…</p>
+        ) : errorHint ? (
+          <p>{errorHint}</p>
+        ) : (
+          <p>
+            Could not load details for surah #{lockSurahId}. Try again, or go back and reselect the surah.
+          </p>
+        )}
+      </div>
+    )
+  }
+
   if (lockSurahId != null && lockedChapter) {
     return (
       <div className="mt-2 space-y-4">

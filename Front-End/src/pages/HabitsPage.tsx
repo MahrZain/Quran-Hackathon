@@ -1,9 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 import { useMoodAyah } from '../context/MoodAyahContext'
 import { useAppSession } from '../hooks/useAppSession'
 import type { StreakActivityItem } from '../lib/apiTypes'
-import { fetchStreakActivitiesDeduped } from '../lib/engineDataCache'
+import { fetchStreakActivitiesDeduped, invalidateStreakActivitiesCache } from '../lib/engineDataCache'
+import {
+  addCalendarDaysYmd,
+  buildLedgerHeatmapCells,
+  countDaysThisLedgerWeek,
+  weekdaySun0InTimeZone,
+  ymdInTimeZone,
+} from '../lib/ledgerCalendar'
 
 const days = ['S', 'M', 'T', 'W', 'T', 'F', 'S'] as const
 
@@ -32,102 +40,79 @@ function formatActivityLabel(ymd: string): { month: string; day: string } {
   }
 }
 
-/** UTC calendar date YYYY-MM-DD */
-function utcYmd(d: Date): string {
-  return d.toISOString().slice(0, 10)
-}
-
-function buildHeatmapColumns(ymdSet: Set<string>, cols: number, rows: number) {
-  const totalDays = cols * rows
-  const end = new Date()
-  end.setUTCHours(0, 0, 0, 0)
-  const start = new Date(end)
-  start.setUTCDate(start.getUTCDate() - (totalDays - 1))
-
-  const columns: { level: (typeof heatLevels)[number]; glow: string }[][] = []
-  for (let c = 0; c < cols; c++) {
-    const column: { level: (typeof heatLevels)[number]; glow: string }[] = []
-    for (let r = 0; r < rows; r++) {
-      const cell = new Date(start)
-      cell.setUTCDate(cell.getUTCDate() + c * rows + r)
-      const key = utcYmd(cell)
-      const has = ymdSet.has(key)
-      const level = has ? heatLevels[3]! : heatLevels[0]!
-      const glow = has ? 'shadow-[0_0_8px_rgba(0,53,39,0.25)]' : ''
-      column.push({ level, glow })
-    }
-    columns.push(column)
-  }
-  return columns
-}
-
-function countThisUtcWeek(activities: StreakActivityItem[]): number {
-  const now = new Date()
-  const dow = now.getUTCDay()
-  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - dow))
-  const set = new Set(activities.map((a) => a.activity_date))
-  let n = 0
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(start)
-    d.setUTCDate(d.getUTCDate() + i)
-    if (set.has(utcYmd(d))) n += 1
-  }
-  return n
-}
+const DEFAULT_LEDGER_TZ = 'Asia/Karachi'
 
 export function HabitsPage() {
+  const { user } = useAuth()
   const { sessionId } = useAppSession()
   const { streakCount } = useMoodAyah()
+  const ledgerTz = (user?.ledger_timezone ?? DEFAULT_LEDGER_TZ).trim() || DEFAULT_LEDGER_TZ
+  const tzShort = ledgerTz.includes('/') ? ledgerTz.split('/').pop() ?? ledgerTz : ledgerTz
+
   const [activities, setActivities] = useState<StreakActivityItem[]>([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
   const [q, setQ] = useState('')
 
-  const load = useCallback(() => {
-    setLoading(true)
-    setErr(null)
-    void fetchStreakActivitiesDeduped(sessionId, 200)
-      .then((rows) => setActivities(rows))
-      .catch(() => {
-        setErr('Could not load mark-complete history. Is the ASAR Engine running?')
-        setActivities([])
-      })
-      .finally(() => setLoading(false))
-  }, [sessionId])
+  const load = useCallback(
+    (opts?: { bustCache?: boolean }) => {
+      setLoading(true)
+      setErr(null)
+      if (opts?.bustCache) {
+        invalidateStreakActivitiesCache(sessionId, 200)
+      }
+      void fetchStreakActivitiesDeduped(sessionId, 200)
+        .then((rows) => setActivities(rows))
+        .catch(() => {
+          setErr('Could not load mark-complete history. Is the ASAR Engine running?')
+          setActivities([])
+        })
+        .finally(() => setLoading(false))
+    },
+    [sessionId],
+  )
 
   useEffect(() => {
-    void load()
+    queueMicrotask(() => void load())
+  }, [load])
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void load({ bustCache: true })
+    }
+    const onLedgerRefresh = () => void load({ bustCache: true })
+    document.addEventListener('visibilitychange', onVis)
+    window.addEventListener('asar:ledger-refresh', onLedgerRefresh)
+    return () => {
+      document.removeEventListener('visibilitychange', onVis)
+      window.removeEventListener('asar:ledger-refresh', onLedgerRefresh)
+    }
   }, [load])
 
   const ymdSet = useMemo(() => new Set(activities.map((a) => a.activity_date)), [activities])
 
-  const heatmapColumns = useMemo(() => buildHeatmapColumns(ymdSet, 26, 7), [ymdSet])
+  const heatmapColumns = useMemo(
+    () => buildLedgerHeatmapCells(ymdSet, 26, 7, ledgerTz),
+    [ymdSet, ledgerTz],
+  )
 
-  const weekMarked = useMemo(() => countThisUtcWeek(activities), [activities])
+  const weekLedger = useMemo(
+    () => countDaysThisLedgerWeek(activities.map((a) => a.activity_date), ledgerTz),
+    [activities, ledgerTz],
+  )
 
-  const [done, setDone] = useState<Record<number, boolean>>({
-    0: false,
-    1: false,
-    2: false,
-    3: false,
-    4: false,
-    5: false,
-    6: false,
-  })
-
-  useEffect(() => {
+  const done = useMemo(() => {
     const now = new Date()
-    const dow = now.getUTCDay()
-    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - dow))
+    const todayStr = ymdInTimeZone(now, ledgerTz)
+    const dow = weekdaySun0InTimeZone(now, ledgerTz)
+    const startYmd = addCalendarDaysYmd(todayStr, -dow)
     const set = new Set(activities.map((a) => a.activity_date))
     const next: Record<number, boolean> = {}
     for (let i = 0; i < 7; i++) {
-      const d = new Date(start)
-      d.setUTCDate(d.getUTCDate() + i)
-      next[i] = set.has(utcYmd(d))
+      next[i] = set.has(addCalendarDaysYmd(startYmd, i))
     }
-    setDone(next)
-  }, [activities])
+    return next
+  }, [activities, ledgerTz])
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase()
@@ -146,7 +131,8 @@ export function HabitsPage() {
         <div>
           <h1 className="font-headline text-3xl tracking-tight text-primary sm:text-4xl">History Ledger</h1>
           <p className="mt-2 max-w-2xl text-base text-on-surface-variant/70">
-            Mark-complete days from your ASAR session (UTC dates). Heatmap and list sync when you refresh.
+            Mark-complete days from your ASAR session ({tzShort} calendar). Heatmap and list sync on refresh, when you
+            return to this tab, or after you mark complete on the dashboard.
           </p>
           {err ? <p className="mt-2 text-xs text-error">{err}</p> : null}
         </div>
@@ -165,7 +151,7 @@ export function HabitsPage() {
 
       <section className="mb-8 rounded-stitch bg-surface-container-low p-5 shadow-ambient">
         <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-secondary">
-          This week (UTC) — days with a logged mark
+          This week ({tzShort}) — days with a logged mark
         </p>
         <div className="flex justify-between gap-2">
           {days.map((label, i) => {
@@ -190,7 +176,7 @@ export function HabitsPage() {
           })}
         </div>
         <p className="mt-3 text-xs text-on-surface-variant/60">
-          {weekMarked} of 7 days this UTC week have a streak entry.
+          {weekLedger.marked} of 7 days this {tzShort} week have a streak entry.
         </p>
       </section>
 
@@ -206,7 +192,7 @@ export function HabitsPage() {
               <div>
                 <h2 className="font-headline text-xl text-primary">Connection heatmap</h2>
                 <p className="font-label text-xs uppercase tracking-widest text-on-surface-variant/60">
-                  Last {26 * 7} days (UTC) · darker = mark logged
+                  Last {26 * 7} days ({tzShort}) · darker = mark logged
                 </p>
               </div>
             </div>
@@ -219,8 +205,8 @@ export function HabitsPage() {
                     {column.map((cell, ri) => (
                       <div
                         key={`${ci}-${ri}`}
-                        className={`h-3 w-3 rounded-full ${cell.level} ${cell.glow}`}
-                        title="Mark-complete day"
+                        className={`h-3 w-3 rounded-full ${heatLevels[cell.levelIdx]!} ${cell.glow}`}
+                        title={cell.hasMark ? `${cell.ymd} · mark logged` : cell.ymd}
                       />
                     ))}
                   </div>
@@ -242,7 +228,7 @@ export function HabitsPage() {
             <p className="text-sm text-on-surface-variant/70">Distinct days with “Mark complete” in this session.</p>
             <button
               type="button"
-              onClick={() => load()}
+              onClick={() => load({ bustCache: true })}
               className="mt-6 flex items-center border-t border-outline-variant/15 pt-6 text-xs font-medium uppercase tracking-widest text-secondary"
             >
               Refresh ledger
@@ -316,7 +302,7 @@ export function HabitsPage() {
                         </span>
                       </div>
                       <p className="leading-relaxed text-on-surface/85">
-                        Marked complete for this UTC day.{' '}
+                        Marked complete for this {tzShort} calendar day.{' '}
                         {readerOk ? (
                           <Link
                             to={`/quran/${surahNum}?ayah=${ayahNum}`}
@@ -336,7 +322,8 @@ export function HabitsPage() {
       </div>
 
       <p className="mt-10 text-center text-sm text-on-surface-variant/55">
-        Data from <span className="font-medium text-on-surface/70">GET /streak/…/activities</span>.{' '}
+        Data from <span className="font-medium text-on-surface/70">GET /streak/…/activities</span>. Ledger day:{' '}
+        <span className="font-medium text-on-surface/70">{ledgerTz}</span>.{' '}
         <Link to="/" className="text-secondary hover:underline">
           Back to dashboard
         </Link>

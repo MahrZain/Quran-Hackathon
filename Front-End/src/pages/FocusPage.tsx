@@ -4,6 +4,7 @@ import { QuranAyahText } from '../components/QuranAyahText'
 import { useMoodAyah } from '../context/MoodAyahContext'
 import type { VerseBundleResponse } from '../lib/apiTypes'
 import { fetchVerseBundleDeduped } from '../lib/engineDataCache'
+import { shareVerse } from '../lib/shareVerse'
 
 export function FocusPage() {
   const [sp] = useSearchParams()
@@ -43,6 +44,7 @@ export function FocusPage() {
 
   const arabic = bundle?.verse_text_uthmani?.trim() || displayAyah.arabic
   const translation = bundle?.verse_translation?.trim() || displayAyah.translation
+  const [surahId, ayahNum] = verseKey.split(':')
 
   return (
     <div className="mx-auto flex min-h-[70vh] max-w-2xl flex-col justify-center px-4">
@@ -56,6 +58,25 @@ export function FocusPage() {
           <p className="text-center text-sm text-error">{err}</p>
         ) : (
           <>
+            <div className="mb-4 flex justify-center">
+              <button
+                type="button"
+                onClick={() =>
+                  void shareVerse({
+                    arabic,
+                    reference: verseKey,
+                    translation,
+                    url: `${window.location.origin}/focus?surah=${surahId}&ayah=${ayahNum}`,
+                  })
+                }
+                className="inline-flex items-center gap-2 rounded-xl border border-primary/30 bg-surface-container-low px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/10"
+              >
+                <span className="material-symbols-outlined text-base" aria-hidden>
+                  ios_share
+                </span>
+                Share
+              </button>
+            </div>
             <QuranAyahText text={arabic} className="mx-auto" />
             <p className="mx-auto mt-8 max-w-md text-center text-sm leading-relaxed text-on-surface/75">
               {translation}

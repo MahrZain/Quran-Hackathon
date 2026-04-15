@@ -1,4 +1,4 @@
-"""Streak: consecutive UTC calendar days anchored at the user's latest logged day."""
+"""Streak: consecutive ledger calendar days (IANA ASAR_LEDGER_TIMEZONE / user override) at latest logged day."""
 
 from datetime import timedelta
 

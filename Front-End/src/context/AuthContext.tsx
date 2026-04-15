@@ -5,10 +5,12 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
 import { apiClient, SESSION_STORAGE_KEY } from '../lib/apiClient'
+import { ymdInTimeZone } from '../lib/ledgerCalendar'
 import { wipeAsarSessionScopeFromBrowser } from '../lib/cleanSlate'
 import { asarE2eTrace } from '../lib/asarE2eTrace'
 import type { TokenResponse, UserMe } from '../lib/apiTypes'
@@ -27,6 +29,10 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
+const DEFAULT_LEDGER_TZ = 'Asia/Karachi'
+const VISIBILITY_REFRESH_DEBOUNCE_MS = 400
+const LEDGER_YMD_POLL_MS = 60_000
+
 /** OAuth start must hit the same host as `QURAN_OAUTH_REDIRECT_URI` or the PKCE cookie is not sent on callback. */
 function engineOriginForOAuthStart(): string {
   const explicit = (import.meta.env.VITE_ASAR_ENGINE_ORIGIN as string | undefined)?.trim()
@@ -41,6 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserMe | null>(null)
   /** No token → no /auth/me call; avoid a splash frame on public routes. */
   const [loading, setLoading] = useState(() => !!getAccessToken())
+  const lastLedgerYmdRef = useRef<string | null>(null)
 
   const refreshUser = useCallback(async () => {
     const token = getAccessToken()
@@ -73,6 +80,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refreshUser()
   }, [refreshUser])
+
+  /** Re-sync /auth/me when returning to the tab so ledger-day fields (e.g. ayahs_marked_today) refresh after midnight. */
+  useEffect(() => {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null
+    const scheduleRefresh = () => {
+      if (!getAccessToken()) return
+      if (debounceTimer !== null) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null
+        void refreshUser()
+      }, VISIBILITY_REFRESH_DEBOUNCE_MS)
+    }
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') scheduleRefresh()
+    }
+
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('focus', scheduleRefresh)
+    return () => {
+      if (debounceTimer !== null) clearTimeout(debounceTimer)
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('focus', scheduleRefresh)
+    }
+  }, [refreshUser])
+
+  /** Long-lived focused tab: detect ledger civil day change (matches server today_in_ledger_tz). */
+  useEffect(() => {
+    if (!getAccessToken() || !user) {
+      lastLedgerYmdRef.current = null
+      return
+    }
+    const tz = (user.ledger_timezone ?? DEFAULT_LEDGER_TZ).trim() || DEFAULT_LEDGER_TZ
+
+    const tick = () => {
+      if (!getAccessToken()) return
+      const ymd = ymdInTimeZone(new Date(), tz)
+      const prev = lastLedgerYmdRef.current
+      if (prev === null) {
+        lastLedgerYmdRef.current = ymd
+        return
+      }
+      if (ymd !== prev) {
+        lastLedgerYmdRef.current = ymd
+        void refreshUser()
+      }
+    }
+
+    tick()
+    const id = window.setInterval(tick, LEDGER_YMD_POLL_MS)
+    return () => clearInterval(id)
+  }, [user?.id, user?.ledger_timezone, refreshUser])
 
   const startQuranFoundationLogin = useCallback(() => {
     const base = engineOriginForOAuthStart()

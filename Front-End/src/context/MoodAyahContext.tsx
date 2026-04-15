@@ -20,7 +20,13 @@ import {
   fetchVerseBundleDeduped,
   preloadAudioFromUrl,
 } from '../lib/engineDataCache'
-import { dailyAyahFromVerseKey, type DailyAyah, fillSurahMeta, getColdStartDailyAyah } from '../lib/mockData'
+import {
+  dailyAyahFromVerseKey,
+  type DailyAyah,
+  fillSurahMeta,
+  getColdStartDailyAyah,
+  isAyahArabicPlaceholder,
+} from '../lib/mockData'
 import { scheduleIdleTask } from '../lib/scheduleIdle'
 
 /** Ayah text/audio enrichment from GET /verse (idle-scheduled so the shell paints first). */
@@ -180,8 +186,17 @@ export function MoodAyahProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const key = user?.current_verse_key || user?.recommended_verse_key
     if (!key || !/^\d+:\d+$/.test(key)) return
+    const parts = key.split(':')
+    const si = Number(parts[0])
+    const an = Number(parts[1])
+    if (!Number.isFinite(si) || !Number.isFinite(an)) return
     startTransition(() => {
-      setDisplayAyah(fillSurahMeta(dailyAyahFromVerseKey(key)))
+      setDisplayAyah((prev) => {
+        if (prev.surahId === si && prev.ayahNumber === an && !isAyahArabicPlaceholder(prev.arabic)) {
+          return fillSurahMeta(prev)
+        }
+        return fillSurahMeta(dailyAyahFromVerseKey(key))
+      })
     })
   }, [user?.current_verse_key, user?.recommended_verse_key, user?.id])
 

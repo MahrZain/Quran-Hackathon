@@ -107,6 +107,7 @@ def effective_current_verse_key(user: User) -> str | None:
 
 
 def ayahs_marked_today(db: Session, user_id: int, d: date | None = None) -> int:
+    """Pass explicit ledger calendar `d` from callers (e.g. /auth/me); default UTC only for tests."""
     day = d or datetime.now(timezone.utc).date()
     row = db.execute(
         select(ReadingDailyStat).where(
@@ -118,7 +119,7 @@ def ayahs_marked_today(db: Session, user_id: int, d: date | None = None) -> int:
 
 
 def increment_daily_marks(db: Session, user_id: int, d: date | None = None) -> int:
-    """Increment today's mark count; return new total."""
+    """Increment mark count for calendar day `d`; pass ledger day from POST /streak (default UTC for tests)."""
     day = d or datetime.now(timezone.utc).date()
     row = db.execute(
         select(ReadingDailyStat).where(

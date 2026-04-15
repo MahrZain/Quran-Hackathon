@@ -1,66 +1,87 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '../components/ui/Button'
 import { useMoodAyah } from '../context/MoodAyahContext'
-
-const STORAGE_KEY = 'asar_dhikr_v1'
-
-const PRESETS = [
-  { id: 'subhan', label: 'Subḥān Allāh', target: 33 },
-  { id: 'hamd', label: 'Alḥamdulillāh', target: 33 },
-  { id: 'akbar', label: 'Allāhu akbar', target: 34 },
-] as const
-
-type PresetId = (typeof PRESETS)[number]['id']
-
-function loadCount(preset: PresetId): number {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return 0
-    const o = JSON.parse(raw) as Record<string, unknown>
-    const n = Number(o[preset])
-    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0
-  } catch {
-    return 0
-  }
-}
-
-function saveCount(preset: PresetId, n: number) {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    const o = raw ? (JSON.parse(raw) as Record<string, number>) : {}
-    o[preset] = n
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(o))
-  } catch {
-    /* ignore */
-  }
-}
+import {
+  BUILTIN_DHIKR,
+  loadDhikrPersisted,
+  parseNewCustom,
+  saveDhikrPersisted,
+  type DhikrEntry,
+  type DhikrPersisted,
+} from '../lib/dhikrStorage'
 
 export function DhikrPage() {
   const { streakCount } = useMoodAyah()
-  const [preset, setPreset] = useState<PresetId>('subhan')
-  const [count, setCount] = useState(0)
+  const [persisted, setPersisted] = useState<DhikrPersisted>(loadDhikrPersisted)
+  const [activeId, setActiveId] = useState<string>(BUILTIN_DHIKR[0].id)
+  const [newLabel, setNewLabel] = useState('')
+  const [newTarget, setNewTarget] = useState('100')
+  const [formError, setFormError] = useState<string | null>(null)
 
-  useEffect(() => {
-    setCount(loadCount(preset))
-  }, [preset])
+  const entries = useMemo(
+    () => [...BUILTIN_DHIKR, ...persisted.customs] as DhikrEntry[],
+    [persisted.customs]
+  )
 
-  const target = PRESETS.find((p) => p.id === preset)?.target ?? 33
+  const active = useMemo(() => {
+    const found = entries.find((e) => e.id === activeId)
+    return found ?? BUILTIN_DHIKR[0]
+  }, [entries, activeId])
+
+  const count = persisted.counts[active.id] ?? 0
+  const target = active.target
+  const doneRound = count >= target
 
   const increment = useCallback(() => {
-    setCount((c) => {
-      const next = c + 1
-      saveCount(preset, next)
+    setPersisted((p) => {
+      const cur = p.counts[activeId] ?? 0
+      const next = { ...p, counts: { ...p.counts, [activeId]: cur + 1 } }
+      saveDhikrPersisted(next)
       return next
     })
-  }, [preset])
+  }, [activeId])
 
   const reset = useCallback(() => {
-    setCount(0)
-    saveCount(preset, 0)
-  }, [preset])
+    setPersisted((p) => {
+      const next = { ...p, counts: { ...p.counts, [activeId]: 0 } }
+      saveDhikrPersisted(next)
+      return next
+    })
+  }, [activeId])
 
-  const doneRound = count >= target
+  const addCustom = useCallback(() => {
+    const parsed = parseNewCustom(newLabel, newTarget)
+    if (!parsed.ok) {
+      setFormError(parsed.error)
+      return
+    }
+    setFormError(null)
+    setPersisted((p) => {
+      const next: DhikrPersisted = {
+        ...p,
+        customs: [...p.customs, { id: parsed.id, label: parsed.label, target: parsed.target }],
+      }
+      saveDhikrPersisted(next)
+      return next
+    })
+    setActiveId(parsed.id)
+    setNewLabel('')
+    setNewTarget(String(parsed.target))
+  }, [newLabel, newTarget])
+
+  const removeCustom = useCallback((id: string) => {
+    setPersisted((p) => {
+      const next: DhikrPersisted = {
+        ...p,
+        customs: p.customs.filter((c) => c.id !== id),
+        counts: Object.fromEntries(Object.entries(p.counts).filter(([k]) => k !== id)),
+      }
+      saveDhikrPersisted(next)
+      return next
+    })
+    setActiveId((cur) => (cur === id ? BUILTIN_DHIKR[0].id : cur))
+  }, [])
 
   return (
     <div className="mx-auto max-w-lg px-4">
@@ -80,20 +101,77 @@ export function DhikrPage() {
       <div className="rounded-stitch bg-surface-container-low p-8 shadow-ambient">
         <p className="mb-4 text-xs font-semibold uppercase tracking-wider text-secondary">Phrase</p>
         <div className="flex flex-wrap gap-2">
-          {PRESETS.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => setPreset(p.id)}
-              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                preset === p.id
-                  ? 'bg-primary text-on-primary shadow-ambient'
-                  : 'bg-surface-container-highest/80 text-on-surface hover:bg-surface-container-high'
-              }`}
-            >
-              {p.label}
-            </button>
+          {entries.map((p) => (
+            <div key={p.id} className="flex max-w-full items-center gap-0.5">
+              <button
+                type="button"
+                onClick={() => setActiveId(p.id)}
+                title={p.label}
+                className={`max-w-[min(100%,14rem)] truncate rounded-full px-4 py-2 text-sm font-semibold transition ${
+                  activeId === p.id
+                    ? 'bg-primary text-on-primary shadow-ambient'
+                    : 'bg-surface-container-highest/80 text-on-surface hover:bg-surface-container-high'
+                }`}
+              >
+                {p.label}
+                <span className="ml-1.5 tabular-nums opacity-80">({p.target})</span>
+              </button>
+              {!p.builtIn && (
+                <button
+                  type="button"
+                  onClick={() => removeCustom(p.id)}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container-high hover:text-error"
+                  aria-label={`Remove ${p.label}`}
+                >
+                  <span className="material-symbols-outlined text-lg" aria-hidden>
+                    close
+                  </span>
+                </button>
+              )}
+            </div>
           ))}
+        </div>
+
+        <div className="mt-8 border-t border-outline-variant/15 pt-8">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-secondary">Your dhikr</p>
+          <p className="mb-3 text-xs text-on-surface-variant">
+            Add any phrase and how many times you want to count toward it today.
+          </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <label className="min-w-0 flex-1 text-xs text-on-surface-variant">
+              <span className="mb-1 block font-semibold text-on-surface/80">Phrase</span>
+              <input
+                className="w-full rounded-xl border border-outline-variant/25 bg-surface-container-high/50 px-3 py-2.5 text-sm text-on-surface outline-none transition focus:border-primary/40 focus:ring-2 focus:ring-primary/15"
+                placeholder="e.g. Lā ilāha illallāh"
+                type="text"
+                autoComplete="off"
+                value={newLabel}
+                onChange={(e) => {
+                  setNewLabel(e.target.value)
+                  if (formError) setFormError(null)
+                }}
+              />
+            </label>
+            <label className="w-full shrink-0 sm:w-28">
+              <span className="mb-1 block text-xs font-semibold text-on-surface/80">Target</span>
+              <input
+                className="w-full rounded-xl border border-outline-variant/25 bg-surface-container-high/50 px-3 py-2.5 text-sm tabular-nums text-on-surface outline-none transition focus:border-primary/40 focus:ring-2 focus:ring-primary/15"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={9999}
+                value={newTarget}
+                onChange={(e) => {
+                  setNewTarget(e.target.value)
+                  if (formError) setFormError(null)
+                }}
+              />
+            </label>
+            <Button type="button" className="w-full shrink-0 sm:w-auto sm:self-end" onClick={addCustom}>
+              Add
+            </Button>
+          </div>
+          {formError && <p className="mt-2 text-xs font-medium text-error">{formError}</p>}
         </div>
 
         <div className="mt-10 text-center">
@@ -105,7 +183,7 @@ export function DhikrPage() {
             {count}
           </p>
           <p className="mt-2 text-sm text-on-surface-variant">
-            Target {target} · {doneRound ? 'Round complete — reset or continue' : `${target - count} remaining`}
+            Target {target} · {doneRound ? 'Round complete — reset or continue' : `${Math.max(0, target - count)} remaining`}
           </p>
         </div>
 

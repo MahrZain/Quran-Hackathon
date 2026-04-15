@@ -119,6 +119,20 @@ export function OnboardingPage() {
     }
   }, [isEditMode, user, loading])
 
+  const prevScopeForCustomRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (readingScope !== 'single_surah' || startLocation !== 'custom' || scopeSurah == null) {
+      prevScopeForCustomRef.current = null
+      return
+    }
+    const prev = prevScopeForCustomRef.current
+    prevScopeForCustomRef.current = scopeSurah
+    setCustomSurah(String(scopeSurah))
+    if (prev != null && prev !== scopeSurah) {
+      setCustomAyah('1')
+    }
+  }, [readingScope, startLocation, scopeSurah])
+
   const currentStep = steps[stepIndex] ?? 'level'
 
   const customSurahNum = Number(customSurah)
@@ -227,9 +241,12 @@ export function OnboardingPage() {
   }
 
   return (
-    <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-y-auto bg-surface text-on-surface">
-      <div className="fixed inset-0 z-0 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-primary-fixed-dim/15 via-surface to-surface" />
-      <header className="relative z-10 border-b border-outline-variant/10 px-4 py-4 sm:px-8">
+    <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-surface text-on-surface">
+      <div
+        className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-primary-fixed-dim/15 via-surface to-surface"
+        aria-hidden
+      />
+      <header className="relative z-10 shrink-0 border-b border-outline-variant/10 px-4 py-4 sm:px-8">
         <div className="mx-auto flex max-w-lg flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
           <div className="flex shrink-0 items-center">
             {stepIndex > 0 ? (
@@ -270,7 +287,7 @@ export function OnboardingPage() {
         )}
       </header>
 
-      <main className="relative z-10 mx-auto flex w-full max-w-lg flex-1 flex-col px-4 py-8 sm:px-8">
+      <main className="relative z-10 mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col overflow-y-auto overscroll-y-contain px-4 py-8 sm:px-8">
         {currentStep === 'level' && (
           <>
             <h1 className="font-headline text-2xl font-bold text-primary">Your level</h1>
@@ -372,7 +389,12 @@ export function OnboardingPage() {
               <button
                 type="button"
                 className={choiceCardClass(startLocation === 'custom')}
-                onClick={() => setStartLocation('custom')}
+                onClick={() => {
+                  setStartLocation('custom')
+                  if (readingScope === 'single_surah' && scopeSurah != null) {
+                    setCustomSurah(String(scopeSurah))
+                  }
+                }}
               >
                 <span className="font-semibold text-on-surface">Pick surah &amp; āyah</span>
                 <p className="mt-1 text-xs text-on-surface/60">
@@ -390,6 +412,7 @@ export function OnboardingPage() {
                 ayahNumber={customAyahNum}
                 onAyahChange={(n) => setCustomAyah(String(n))}
                 surahLabel="Your surah"
+                errorHint={chaptersErr}
               />
             )}
             {startLocation === 'custom' && readingScope === 'full_mushaf' && (

@@ -144,6 +144,12 @@ function surahMeta(surahId: number) {
   return SURAH_LIST.find((s) => s.id === surahId)
 }
 
+/** Skeleton from `dailyAyahFromVerseKey` before GET /verse; do not feed into Textfit. */
+export function isAyahArabicPlaceholder(arabic: string | undefined): boolean {
+  const t = (arabic ?? '').trim()
+  return t.length === 0 || t === '…' || t === '...'
+}
+
 /** Resolve a verse key to a DailyAyah (known catalog or skeleton for API hydration). */
 export function dailyAyahFromVerseKey(verseKey: string): DailyAyah {
   const parts = verseKey.split(':')

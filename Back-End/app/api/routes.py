@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
@@ -12,6 +11,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_current_user_optional
+from app.core.config import get_settings
 from app.db.database import get_db
 from app.models.domain import (
     ChatMessage,
@@ -36,6 +36,7 @@ from app.models.schemas import (
     StreakRequest,
     StreakResponse,
     StreakSnapshot,
+    TranslationResourceOut,
     VerseBundleResponse,
 )
 from app.services import ai_service, bookmark_sync_task, chat_rag_rest, quran_service, quran_user_service
@@ -47,6 +48,7 @@ from app.services.reading_cursor_service import (
     parse_verse_key,
     seed_reading_cursor_from_legacy,
 )
+from app.services.ledger_time import today_in_ledger_tz
 from app.services.streak_logic import compute_streak_count
 
 log = logging.getLogger(__name__)
@@ -144,6 +146,8 @@ async def chat_message(
         answer, verse_cards = await chat_rag_rest.run_rest_rag_chat(
             user_message=payload.message,
             history=payload.history,
+            answer_language=payload.answer_language,
+            translation_resource_id=payload.translation_resource_id,
         )
     except ValueError as e:
         log.warning("chat/message unavailable session=%s: %s", sid, e)
@@ -200,9 +204,27 @@ def streak_summary(
     return StreakSnapshot(updated_streak_count=n)
 
 
+@router.get("/translations", response_model=list[TranslationResourceOut])
+async def translation_resources_catalog(
+    language: str | None = Query(
+        default=None,
+        max_length=8,
+        description="Optional ISO-style filter passed to upstream (e.g. en, ur)",
+    ),
+) -> list[TranslationResourceOut]:
+    """Translation editions from the configured Quran Content API (for dashboard / reader pickers)."""
+    rows = await quran_service.fetch_translation_resources_catalog(language=language)
+    return [TranslationResourceOut.model_validate(x) for x in rows]
+
+
 @router.get("/verse", response_model=VerseBundleResponse)
 async def verse_bundle(
     verse_key: str = Query(..., min_length=3, max_length=16, description="Surah:ayah, e.g. 94:5"),
+    translation_resource_id: int | None = Query(
+        default=None,
+        ge=1,
+        description="Optional Quran.com translation resource id; omit for server default",
+    ),
 ) -> VerseBundleResponse:
     """Uthmani + translation + optional audio for the dashboard / focus / reader."""
     vk = verse_key.strip()
@@ -212,7 +234,9 @@ async def verse_bundle(
     uthmani, trans = "", ""
     audio: str | None = None
     try:
-        uthmani, trans = await quran_service.fetch_verse_uthmani_and_translation(vk)
+        uthmani, trans = await quran_service.fetch_verse_uthmani_and_translation(
+            vk, translation_resource_id=translation_resource_id
+        )
     except Exception:
         log.warning("verse text fetch failed for %s", vk, exc_info=True)
     try:
@@ -390,7 +414,7 @@ async def streak(
     sid = _effective_session_id(db, user, str(payload.session_id))
     _ensure_session(db, sid)
 
-    d = payload.activity_date or datetime.now(timezone.utc).date()
+    d = payload.activity_date or today_in_ledger_tz(get_settings(), user)
 
     if user is not None:
         seed_reading_cursor_from_legacy(db, user)

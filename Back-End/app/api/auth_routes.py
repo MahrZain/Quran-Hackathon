@@ -9,6 +9,7 @@ import urllib.parse
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from uuid import uuid4
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 import jwt
@@ -22,9 +23,16 @@ from app.core.config import Settings, get_settings
 from app.core.security import create_access_token, hash_password, verify_password
 from app.db.database import get_db
 from app.models.domain import User
-from app.models.schemas import OnboardingCompleteRequest, RecommendedVerseResponse, TokenResponse, UserMe
+from app.models.schemas import (
+    LedgerTimezonePatch,
+    OnboardingCompleteRequest,
+    RecommendedVerseResponse,
+    TokenResponse,
+    UserMe,
+)
 from app.services import quran_service, quran_user_service
 from app.services.onboarding_policy import recommended_verse_key
+from app.services.ledger_time import effective_ledger_timezone_name, today_in_ledger_tz
 from app.services.reading_cursor_service import (
     ayahs_marked_today,
     clamp_ayah_to_surah,
@@ -41,16 +49,19 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 def _build_user_me(user: User, db: Session | None = None) -> UserMe:
+    settings = get_settings()
     sid = (user.asar_session_id or "").strip()
     marked = 0
     if db is not None:
-        marked = ayahs_marked_today(db, user.id)
+        day = today_in_ledger_tz(settings, user)
+        marked = ayahs_marked_today(db, user.id, day)
     cvk = effective_current_verse_key(user)
     at_end = cursor_at_reading_scope_end(user)
     return UserMe(
         id=user.id,
         email=user.email,
         asar_session_id=sid,
+        ledger_timezone=effective_ledger_timezone_name(settings, user),
         onboarding_completed=user.onboarding_completed_at is not None,
         onboarding_goal=user.onboarding_goal,
         onboarding_level=user.onboarding_level,
@@ -400,6 +411,30 @@ def me(
     if changed:
         db.commit()
         db.refresh(user)
+    return _build_user_me(user, db)
+
+
+@router.patch("/me/ledger-timezone", response_model=UserMe)
+def patch_ledger_timezone(
+    body: LedgerTimezonePatch,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Session = Depends(get_db),
+) -> UserMe:
+    tz = (body.ledger_timezone or "").strip()
+    if not tz:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="ledger_timezone is required")
+    try:
+        ZoneInfo(tz)
+    except ZoneInfoNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="ledger_timezone must be a valid IANA timezone name",
+        ) from e
+    user.ledger_timezone = tz
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    log.info("ledger_timezone updated user_id=%s tz=%s", user.id, tz)
     return _build_user_me(user, db)
 
 

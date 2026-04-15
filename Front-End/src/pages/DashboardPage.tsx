@@ -112,6 +112,7 @@ export function DashboardPage() {
         updated_streak_count: data.updated_streak_count,
         quran_foundation_synced: data.quran_foundation_synced,
       })
+      window.dispatchEvent(new CustomEvent('asar:ledger-refresh'))
       setMarkSaved(true)
       if (data.quran_foundation_synced) {
         setQfToast(true)
@@ -311,7 +312,7 @@ export function DashboardPage() {
             <StreakConstellation days={constellationDays} />
             <div className="mt-4 flex items-end justify-between">
               <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-500/40">
-                Last 7 days
+                Last 30 days
               </span>
               <div className="text-right">
                 <span className="text-2xl font-black text-secondary">{engagementPoints}</span>

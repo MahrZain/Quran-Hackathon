@@ -1,3 +1,4 @@
+import json
 from functools import lru_cache
 
 from pydantic import model_validator
@@ -15,13 +16,17 @@ class Settings(BaseSettings):
 
     longcat_api_key: str = ""
     longcat_base_url: str = "https://api.longcat.chat/openai/v1"
-    longcat_model: str = "LongCat-Flash-Lite"
+    # LongCat platform experimental chat model (FAQ / quota docs). Override with LONGCAT_MODEL e.g.
+    # LongCat-Flash-Chat, LongCat-Flash-Lite, LongCat-Flash-Thinking-2601 for stable tiers.
+    longcat_model: str = "LongCat-Flash-Chat-2602-Exp"
     # POST /chat/message only (other AI paths keep their own limits)
     longcat_chat_max_tokens: int = 384
     longcat_chat_temperature: float = 0.35
 
     quran_api_base_url: str = "https://api.quran.com/api/v4"
     quran_api_key: str = ""
+    # Primary translation resource_id for verse fetches (see GET /api/v4/resources/translations on your host).
+    # 85 = M.A.S. Abdel Haleem (English); 20 = Saheeh International (English).
     quran_translation_resource_id: int = 85
     # Content API `language` query param (chapter metadata, verse payloads). ISO 639-1 e.g. en, ar, ur, fr.
     quran_content_language: str = "en"
@@ -30,10 +35,32 @@ class Settings(BaseSettings):
     quran_secondary_content_language: str = ""
     # Optional /search `language` filter; empty = omit (widest matching behavior on mixed hosts).
     quran_search_language: str = ""
-    # Optional Urdu (or other) translation resource for /chat/message when user asks e.g. "in urdu". 0 = disabled.
-    quran_urdu_translation_resource_id: int = 0
+    # Urdu translation resource for /chat/message when the user writes in Urdu or asks e.g. "in urdu".
+    # 0 = disabled (Urdu script questions fall back to primary translation). Common api.quran.com ids:
+    # 234 Fatah Muhammad Jalandhari, 54 Junagarhi, 97 Maududi (Tafheem). Override in .env if you prefer another edition.
+    quran_urdu_translation_resource_id: int = 234
     quran_default_verse_key: str = "1:1"
     quran_ai_max_verses: int = 3
+    # REST chat (/chat/message): lexical relevance gate (0 = disabled). Trims or clarifies on weak multi-hit retrieval.
+    quran_chat_relevance_gate_enabled: bool = True
+    quran_chat_relevance_min_score: float = 0.06
+    quran_chat_relevance_trim_to: int = 2
+    # Optional English search phrase via LLM when user text is poor for /search (non-Latin-heavy, etc.).
+    quran_chat_query_bridge_enabled: bool = True
+    quran_chat_query_bridge_max_tokens: int = 64
+    quran_chat_query_bridge_min_latin_ratio: float = 0.35
+    # Optional JSON search planner (LongCat): one structured object with search_phrase / topic_keywords before /search.
+    # On parse failure or when disabled, existing query bridge + heuristics apply unchanged.
+    quran_chat_query_planner_enabled: bool = False
+    quran_chat_query_planner_max_tokens: int = 128
+    # Include previous/next ayah in LLM context (and response cards) when enabled; hard cap on total verses.
+    quran_chat_neighbor_context_enabled: bool = False
+    quran_chat_neighbor_max_verses: int = 9
+    # Second LLM pass: YES/NO grounding check then one strict rewrite if NO (~one extra LongCat call per reply when verses exist).
+    quran_chat_alignment_check_enabled: bool = True
+    quran_chat_alignment_max_tokens: int = 96
+    # JSON map ISO 639-1 code -> Quran.com translation resource_id (see Back-End/.env.example and GET /resources/translations).
+    quran_chat_translation_resources_json: str = "{}"
     quran_user_activity_url: str = ""
     # When the verse API omits `audio` (common on api.quran.com), build URL from this template.
     # {block} = 6 digits, surah padded to 3 + ayah padded to 3 (e.g. 094005 for 94:5). Public CDN allows * origin.
@@ -65,6 +92,8 @@ class Settings(BaseSettings):
     quran_activity_mushaf_id: int = 4  # 4 = UthmaniHafs per api-docs.quran.foundation
     quran_activity_seconds_default: int = 60  # required >= 1; nominal reading seconds for “mark complete”
     quran_activity_timezone: str = "Etc/UTC"  # IANA tz for x-timezone (day boundaries / streaks)
+    # Mark-complete streak + History Ledger calendar day (POST /streak default, daily counts, heatmap copy).
+    asar_ledger_timezone: str = "Asia/Karachi"
     # Browser origin for post–Quran OAuth return (redirects to {this}/welcome/oauth#asar_token=…)
     frontend_after_oauth_url: str = "http://localhost:5173"
     # Demo “armed” User API tokens (optional; injected on POST /auth/demo)

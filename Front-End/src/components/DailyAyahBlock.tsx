@@ -1,10 +1,11 @@
 import { ArrowRight } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useMoodAyah } from '../context/MoodAyahContext'
+import { useMoodAyah, type VerseEnrichmentStatus } from '../context/MoodAyahContext'
 import { QuranAyahText } from './QuranAyahText'
 import { useSound } from '../hooks/useSound'
-import { fillSurahMeta, type DailyAyah } from '../lib/mockData'
+import { fillSurahMeta, isAyahArabicPlaceholder, type DailyAyah } from '../lib/mockData'
+import { shareVerse } from '../lib/shareVerse'
 
 type DailyAyahBlockProps = {
   ayah: DailyAyah
@@ -12,6 +13,37 @@ type DailyAyahBlockProps = {
 }
 
 type TextMode = 'arabic' | 'translation'
+
+function ArabicPlaceholderBlock({
+  status,
+  flexFill,
+  compact,
+}: {
+  status: VerseEnrichmentStatus
+  flexFill?: boolean
+  compact?: boolean
+}) {
+  const busy = status === 'pending' || status === 'text_ready'
+  const height = flexFill ? 'min-h-[12rem] flex-1' : compact ? 'min-h-[6rem]' : 'min-h-[10rem]'
+  return (
+    <div
+      className={`mx-auto flex w-full max-w-3xl flex-col items-center justify-center gap-4 px-4 ${height}`}
+      dir="rtl"
+      lang="ar"
+      aria-busy={busy}
+      aria-label={status === 'unavailable' ? 'Arabic text unavailable' : 'Loading Arabic ayah'}
+    >
+      <div className={`w-full space-y-2.5 ${compact ? 'max-w-md' : 'max-w-lg'}`}>
+        <div className="ms-auto h-2.5 w-[88%] animate-pulse rounded-full bg-primary/12" />
+        <div className="ms-auto h-2.5 w-[72%] animate-pulse rounded-full bg-primary/12" />
+        <div className="ms-auto h-2.5 w-[80%] animate-pulse rounded-full bg-primary/12" />
+      </div>
+      <p className="text-center font-serif text-xs text-on-surface-variant/90" dir="ltr">
+        {status === 'unavailable' ? 'Arabic text could not be loaded. Try again later.' : 'Loading ayah…'}
+      </p>
+    </div>
+  )
+}
 
 export function DailyAyahBlock({ ayah, className = '' }: DailyAyahBlockProps) {
   const { verseEnrichmentStatus } = useMoodAyah()
@@ -31,6 +63,8 @@ export function DailyAyahBlock({ ayah, className = '' }: DailyAyahBlockProps) {
         ? 'bg-surface-container-lowest text-on-surface shadow-sm'
         : 'text-on-surface-variant hover:bg-surface-container-high/60'
     }`
+
+  const arabicPending = isAyahArabicPlaceholder(ayah.arabic)
 
   return (
     <div className={`asar-glass relative flex h-full min-h-0 flex-col overflow-hidden rounded-stitch p-6 sm:p-8 ${className}`}>
@@ -62,17 +96,25 @@ export function DailyAyahBlock({ ayah, className = '' }: DailyAyahBlockProps) {
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 text-center">
         {textMode === 'arabic' ? (
           <>
-            <QuranAyahText text={ayah.arabic} flexFill className="mx-auto w-full justify-center" />
+            {arabicPending ? (
+              <ArabicPlaceholderBlock status={verseEnrichmentStatus} flexFill />
+            ) : (
+              <QuranAyahText text={ayah.arabic} flexFill className="mx-auto w-full justify-center" />
+            )}
             <p className="max-w-md shrink-0 font-serif text-sm italic text-on-surface/55 sm:text-base">
               &ldquo;{ayah.translation}&rdquo;
             </p>
           </>
         ) : (
           <>
-            <QuranAyahText
-              text={ayah.arabic}
-              className="mx-auto max-w-2xl justify-center text-lg opacity-80 sm:text-xl"
-            />
+            {arabicPending ? (
+              <ArabicPlaceholderBlock status={verseEnrichmentStatus} compact />
+            ) : (
+              <QuranAyahText
+                text={ayah.arabic}
+                className="mx-auto max-w-2xl justify-center text-lg opacity-80 sm:text-xl"
+              />
+            )}
             <p className="max-w-lg shrink-0 font-serif text-base leading-relaxed text-on-surface/90 sm:text-lg">
               &ldquo;{ayah.translation}&rdquo;
             </p>
@@ -106,6 +148,23 @@ export function DailyAyahBlock({ ayah, className = '' }: DailyAyahBlockProps) {
         </div>
         <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+          <button
+            type="button"
+            onClick={() =>
+              void shareVerse({
+                arabic: ayah.arabic,
+                reference: ref,
+                translation: ayah.translation,
+                url: `${window.location.origin}${readerHref}`,
+              })
+            }
+            className="flex items-center gap-2 text-sm font-bold text-primary/80 hover:text-primary"
+          >
+            <span className="material-symbols-outlined text-base" aria-hidden>
+              ios_share
+            </span>
+            Share
+          </button>
           <button
             type="button"
             disabled={audioBusy}

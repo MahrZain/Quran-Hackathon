@@ -31,6 +31,11 @@ export function fetchStreakActivitiesDeduped(sessionId: string, limit = 120) {
   )
 }
 
+/** Drop coalesced GET so the next fetch hits the engine (e.g. after mark-complete or tab focus). */
+export function invalidateStreakActivitiesCache(sessionId: string, limit = 200) {
+  inflight.delete(`streakActs:${sessionId}:${limit}`)
+}
+
 export function fetchVerseBundleDeduped(verseKey: string) {
   return share(`verse:${verseKey}`, () =>
     apiClient.get<VerseBundleResponse>('/verse', { params: { verse_key: verseKey } }).then((r) => r.data),

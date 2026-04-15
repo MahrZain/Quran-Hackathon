@@ -1,6 +1,7 @@
 """Create SQLite tables. Run from Back-End: python scripts/init_db.py
 
-Existing DBs: run `python scripts/migrate_user_onboarding.py` and `python scripts/migrate_reading_cursor.py` once after model changes.
+Existing DBs: run migrate scripts after model changes, e.g. `migrate_user_onboarding.py`,
+`migrate_reading_cursor.py`, and `migrate_user_ledger_timezone.py`.
 """
 
 from pathlib import Path

@@ -6,6 +6,14 @@ import httpx
 import pytest
 
 from app.services import quran_service
+from app.services.quran_service import normalize_translation_resource_row
+
+
+def test_adjacent_verse_keys():
+    assert quran_service.adjacent_verse_keys("1:1") == ["1:1", "1:2"]
+    assert "2:1" in quran_service.adjacent_verse_keys("1:7")
+    mid = quran_service.adjacent_verse_keys("2:255")
+    assert mid == ["2:254", "2:255", "2:256"]
 
 
 def test_verse_keys_surah_ikhlas_typo_whole_surah():
@@ -40,6 +48,23 @@ def test_verse_keys_first_ayah_of_quran():
 def test_verse_keys_sura_iklash_typo():
     keys = quran_service.verse_keys_from_natural_language_query("sura iklash", max_keys=8)
     assert keys == ["112:1", "112:2", "112:3", "112:4"]
+
+
+def test_verse_keys_surat_nas_with_roman_suffix():
+    keys = quran_service.verse_keys_from_natural_language_query("surat nas ka turjma", max_keys=5)
+    assert keys, "expected surah 114 resolved, not a broken single-letter capture"
+    assert keys[0].startswith("114:")
+
+
+def test_normalize_translation_resource_row():
+    row = {"id": 234, "name": "Jalandhari", "author_name": "A", "language_name": "urdu", "slug": "ur-j"}
+    out = normalize_translation_resource_row(row)
+    assert out is not None
+    assert out["id"] == 234
+    assert out["name"] == "Jalandhari"
+    assert out["language_name"] == "urdu"
+    assert normalize_translation_resource_row({}) is None
+    assert normalize_translation_resource_row({"id": 0}) is None
 
 
 def test_verse_payload_flat_and_resource_pick():

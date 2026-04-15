@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="ASAR Sanctuary">
+  <rect width="512" height="512" rx="96" fill="#003527"/>
+  <rect x="128" y="128" width="256" height="256" rx="42" fill="none" stroke="#D4AF37" stroke-width="16"/>
+  <circle cx="256" cy="256" r="54" fill="#95d3ba" opacity="0.9"/>
+</svg>

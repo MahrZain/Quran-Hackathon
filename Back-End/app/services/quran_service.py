@@ -37,7 +37,26 @@ _SURAH_NAME_TYPO: dict[str, str] = {
 
 _VERSE_KEY_RE = re.compile(r"^\d{1,3}:\d{1,3}$")
 
+# Surah name after "surah …" (no bare `\s` inside a lazy quantifier — it wrongly matched "n " for "surat nas …").
+_SURAH_NAME_CAPTURE = r"[a-zA-Z'’\u2019\-]+(?:\s+[a-zA-Z'’\u2019\-]+){0,5}"
+
 _MAX_AYAH_FALLBACK = 286  # safe upper bound for validation before HTTP fetch
+
+# Roman Urdu / English noise after surah name: "surat nas ka turjma" → "nas"
+_SURAH_NAME_TRAILING_JUNK = frozenset(
+    """
+    ka ke ki ko se par mein mai liya leya liye keliye wala walay
+    turjma tarjma tarjuma translation meaning mean matlab tafseer tafsir
+    batao bataye batayen please plz
+    """.split()
+)
+
+
+def _strip_trailing_surah_name_noise(frag: str) -> str:
+    parts = [p.strip("'’\u2019.?!,،") for p in re.split(r"\s+", (frag or "").strip()) if p.strip()]
+    while parts and parts[-1].lower() in _SURAH_NAME_TRAILING_JUNK:
+        parts.pop()
+    return " ".join(parts).strip()
 
 
 @functools.lru_cache(maxsize=1)
@@ -132,6 +151,36 @@ def _expand_surah_to_verse_keys(surah_id: int, max_keys: int) -> list[str]:
     return [f"{surah_id}:{i}" for i in range(1, n + 1)]
 
 
+def adjacent_verse_keys(verse_key: str) -> list[str]:
+    """Prev, center, next in reading order (deduped). Invalid keys return []."""
+    vk = (verse_key or "").strip()
+    if not _VERSE_KEY_RE.match(vk):
+        return []
+    parts = vk.split(":")
+    surah, ayah = int(parts[0]), int(parts[1])
+    if not (1 <= surah <= 114):
+        return []
+    out: list[str] = []
+    if ayah > 1:
+        out.append(f"{surah}:{ayah - 1}")
+    elif surah > 1:
+        prev_vc = verse_count_for_surah(surah - 1) or 1
+        out.append(f"{surah - 1}:{prev_vc}")
+    out.append(vk)
+    vc = verse_count_for_surah(surah) or _MAX_AYAH_FALLBACK
+    if ayah < vc:
+        out.append(f"{surah}:{ayah + 1}")
+    elif surah < 114:
+        out.append(f"{surah + 1}:1")
+    seen: set[str] = set()
+    dedup: list[str] = []
+    for k in out:
+        if k not in seen:
+            seen.add(k)
+            dedup.append(k)
+    return dedup
+
+
 def verse_keys_from_natural_language_query(text: str, *, max_keys: int = 8) -> list[str]:
     """
     Resolve explicit surah:ayah references from free text (e.g. 'sura nas ayat 1', '114:1', '2:255')
@@ -182,13 +231,13 @@ def verse_keys_from_natural_language_query(text: str, *, max_keys: int = 8) -> l
 
     # Allow commas/pause between name and ayah: "Surah Ad-Duha, ayah 7"
     name_pat = re.compile(
-        r"\b(?:surah|sura|surat|chapter)\s+([a-zA-Z'’\u2019\-\s]{2,60}?)"
+        rf"\b(?:surah|sura|surat|chapter)\s+({_SURAH_NAME_CAPTURE})"
         r"[\s,،]*"
         r"(?:ayat|ayah|verse|ayet)\s*#?\s*(\d{1,3})\b",
         re.I,
     )
     for m in name_pat.finditer(t):
-        frag = re.sub(r"\s+", " ", m.group(1).strip()).strip(" ,،")
+        frag = _strip_trailing_surah_name_noise(re.sub(r"\s+", " ", m.group(1).strip()).strip(" ,،"))
         ay = int(m.group(2))
         sid = _resolve_name_fragment_to_sid(frag, al)
         if sid is not None:
@@ -221,12 +270,12 @@ def verse_keys_from_natural_language_query(text: str, *, max_keys: int = 8) -> l
 
     if not found:
         surah_only_name = re.compile(
-            r"\b(?:surah|sura|surat|chapter)\s+([a-zA-Z'’\u2019\-\s]{2,60}?)\b"
+            rf"\b(?:surah|sura|surat|chapter)\s+({_SURAH_NAME_CAPTURE})\b"
             r"(?!\s*[,،]?\s*(?:ayat|ayah|verse|ayet)\s*#?\s*\d)",
             re.I,
         )
         for m in surah_only_name.finditer(t):
-            frag = re.sub(r"\s+", " ", m.group(1).strip())
+            frag = _strip_trailing_surah_name_noise(re.sub(r"\s+", " ", m.group(1).strip()))
             sid = _resolve_name_fragment_to_sid(frag, al)
             if sid is not None:
                 extend_surah(sid)
@@ -675,6 +724,86 @@ def _chapter_summary_from_api(ch: dict[str, Any]) -> dict[str, Any]:
         "verses": int(ch.get("verses_count") or 0),
         "revelation": _revelation_label(ch.get("revelation_place")),
     }
+
+
+def normalize_translation_resource_row(row: dict[str, Any]) -> dict[str, Any] | None:
+    """Map upstream translation resource JSON to a stable dict for API responses (or None if invalid)."""
+    try:
+        tid = int(row.get("id"))
+    except (TypeError, ValueError):
+        return None
+    if tid < 1:
+        return None
+    return {
+        "id": tid,
+        "name": str(row.get("name") or "").strip(),
+        "author_name": str(row.get("author_name") or "").strip(),
+        "language_name": str(row.get("language_name") or "").strip(),
+        "slug": str(row.get("slug") or "").strip(),
+    }
+
+
+async def fetch_translation_resources_catalog(
+    settings: Settings | None = None,
+    *,
+    language: str | None = None,
+) -> list[dict[str, Any]]:
+    """
+    List translation editions from Content API GET /resources/translations.
+    Optional `language` filters by API language (e.g. ur, en). Returns [] on failure.
+    """
+    s = settings or get_settings()
+    client = _client_or_raise()
+    base = s.quran_api_base_url.rstrip("/")
+    params: dict[str, str] = {}
+    lang = (language or "").strip().lower()[:8]
+    if lang:
+        params["language"] = lang
+    url = f"{base}/resources/translations"
+    headers = await _auth_headers(s)
+    rows: list[dict[str, Any]] = []
+
+    async def _parse_response(r: httpx.Response) -> list[dict[str, Any]]:
+        r.raise_for_status()
+        data = r.json()
+        out: list[dict[str, Any]] = []
+        for row in data.get("translations") or []:
+            if not isinstance(row, dict):
+                continue
+            norm = normalize_translation_resource_row(row)
+            if norm:
+                out.append(norm)
+        out.sort(key=lambda x: (x["language_name"].lower(), x["name"].lower(), x["id"]))
+        return out
+
+    try:
+        r = await client.get(url, params=params or None, headers=headers, timeout=45.0)
+        if r.status_code in (404, 500, 502, 503, 504) and _content_api_public_fallback_eligible(s):
+            log.debug("translations catalog HTTP %s on primary; retrying public api.quran.com", r.status_code)
+            r = await client.get(
+                f"{_PUBLIC_CONTENT_API_V4}/resources/translations",
+                params=params or None,
+                headers={},
+                timeout=45.0,
+            )
+        rows = await _parse_response(r)
+    except Exception as e:
+        log.warning("translation resources catalog failed: %s", e)
+        return []
+
+    if not rows and _content_api_public_fallback_eligible(s):
+        try:
+            r2 = await client.get(
+                f"{_PUBLIC_CONTENT_API_V4}/resources/translations",
+                params=params or None,
+                headers={},
+                timeout=45.0,
+            )
+            rows = await _parse_response(r2)
+        except Exception as e:
+            log.debug("translation resources public fallback skipped: %s", e)
+
+    return rows
 
 
 async def fetch_chapters_catalog(settings: Settings | None = None) -> list[dict[str, Any]]:

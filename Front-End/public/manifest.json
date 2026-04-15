@@ -1,0 +1,25 @@
+{
+  "name": "ASAR Sanctuary",
+  "short_name": "ASAR Sanctuary",
+  "description": "The Digital Sanctuary — Quran reading, reflection, and companion chat.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#003527",
+  "background_color": "#FDF2F0",
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

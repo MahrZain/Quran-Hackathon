@@ -12,6 +12,19 @@ import { useMoodAyah } from '../context/MoodAyahContext'
 import { ChatSamplePrompts } from '../components/ChatSamplePrompts'
 import { ChatSamplePromptsCollapsible } from '../components/ChatSamplePromptsCollapsible'
 import { allChatSamplePrompts } from '../lib/chatSamplePrompts'
+import { shareVerse } from '../lib/shareVerse'
+import {
+  CHAT_REPLY_LANGUAGE_OPTIONS,
+  CHAT_VERSE_TRANSLATION_OPTIONS,
+  loadChatReplyLanguage,
+  loadChatVerseTranslation,
+  resolveAnswerLanguage,
+  resolveTranslationResourceId,
+  saveChatReplyLanguage,
+  saveChatVerseTranslation,
+  type ChatReplyLanguageValue,
+  type ChatVerseTranslationValue,
+} from '../lib/chatPreferences'
 
 type Row =
   | { role: 'user'; text: string }
@@ -27,11 +40,31 @@ function historyToRows(rows: HistoryMessage[]): Row[] {
 }
 
 function AyahCard({ v }: { v: ChatVerseCard }) {
+  const appUrl = `${window.location.origin}/chat`
   return (
     <article
       className="rounded-xl border border-outline-variant/15 bg-surface-container-highest/50 p-3 text-left shadow-sm"
       lang="ar"
     >
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() =>
+            void shareVerse({
+              arabic: v.ayah,
+              reference: v.reference,
+              translation: v.translation,
+              url: appUrl,
+            })
+          }
+          className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold text-primary/80 hover:bg-primary/10 hover:text-primary"
+        >
+          <span className="material-symbols-outlined text-base" aria-hidden>
+            ios_share
+          </span>
+          Share
+        </button>
+      </div>
       <p className="quran-mushaf text-lg leading-relaxed text-on-surface" dir="rtl">
         {v.ayah}
       </p>
@@ -56,6 +89,10 @@ export function ChatPage() {
   const [sending, setSending] = useState(false)
   const [hydrating, setHydrating] = useState(true)
   const [clearing, setClearing] = useState(false)
+  const [replyLanguage, setReplyLanguage] = useState<ChatReplyLanguageValue>(() => loadChatReplyLanguage())
+  const [verseTranslation, setVerseTranslation] = useState<ChatVerseTranslationValue>(() =>
+    loadChatVerseTranslation(),
+  )
   const listRef = useRef<HTMLDivElement>(null)
   /** React Router location key — survives Strict Mode remounts so we only auto-send once per navigation. */
   const initialHandledKeyRef = useRef<string | null>(null)
@@ -69,6 +106,14 @@ export function ChatPage() {
   useEffect(() => {
     scrollToBottom()
   }, [rows, scrollToBottom])
+
+  useEffect(() => {
+    saveChatReplyLanguage(replyLanguage)
+  }, [replyLanguage])
+
+  useEffect(() => {
+    saveChatVerseTranslation(verseTranslation)
+  }, [verseTranslation])
 
   useEffect(() => {
     let cancelled = false
@@ -101,10 +146,14 @@ export function ChatPage() {
       }))
       setRows((prev) => [...prev, { role: 'user', text: t }])
       try {
+        const answer_language = resolveAnswerLanguage(replyLanguage)
+        const translation_resource_id = resolveTranslationResourceId(verseTranslation)
         const { data } = await apiClient.post<ChatMessageResponse>('/chat/message', {
           session_id: sessionId,
           history,
           message: t,
+          answer_language,
+          ...(translation_resource_id != null ? { translation_resource_id } : {}),
         })
         setRows((prev) => [
           ...prev,
@@ -123,7 +172,7 @@ export function ChatPage() {
         setSending(false)
       }
     },
-    [rows, refreshSessionChatStats, sending, sessionId],
+    [rows, refreshSessionChatStats, replyLanguage, sending, sessionId, verseTranslation],
   )
 
   useEffect(() => {
@@ -174,6 +223,42 @@ export function ChatPage() {
                 Grounded verses when the API finds them; streak unchanged.{' '}
                 <strong className="font-medium text-on-surface/80">Focus mode</strong> is read-only—chat here only.
               </p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                <label className="flex min-w-0 flex-1 flex-col gap-0.5 sm:max-w-[11rem]">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant/80">
+                    Reply language
+                  </span>
+                  <select
+                    value={replyLanguage}
+                    onChange={(e) => setReplyLanguage(e.target.value as ChatReplyLanguageValue)}
+                    disabled={sending || hydrating}
+                    className="rounded-lg border border-outline-variant/25 bg-surface-container-highest/60 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary-fixed-dim"
+                  >
+                    {CHAT_REPLY_LANGUAGE_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex min-w-0 flex-1 flex-col gap-0.5 sm:max-w-[14rem]">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant/80">
+                    Verse translation
+                  </span>
+                  <select
+                    value={verseTranslation}
+                    onChange={(e) => setVerseTranslation(e.target.value as ChatVerseTranslationValue)}
+                    disabled={sending || hydrating}
+                    className="rounded-lg border border-outline-variant/25 bg-surface-container-highest/60 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary-fixed-dim"
+                  >
+                    {CHAT_VERSE_TRANSLATION_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
             </div>
             {!hydrating && rows.length > 0 ? (
               <Button

@@ -25,6 +25,10 @@ class ChatMessageRequest(BaseModel):
     session_id: UUID
     history: list[ChatTurnIn] = Field(default_factory=list, max_length=48)
     message: str = Field(..., min_length=1, max_length=8000)
+    # Optional ISO 639-1 code (e.g. ur, fr) for answer language and translation lookup.
+    answer_language: str | None = Field(default=None, max_length=16)
+    # Optional Quran.com translation resource_id override (advanced).
+    translation_resource_id: int | None = Field(default=None, ge=1)
 
 
 class ChatVerseCard(BaseModel):
@@ -56,6 +60,16 @@ class VerseBundleResponse(BaseModel):
     verse_text_uthmani: str = ""
     verse_translation: str = ""
     audio_url: str | None = None
+
+
+class TranslationResourceOut(BaseModel):
+    """One Quran.com / Content API translation resource for UI pickers."""
+
+    id: int
+    name: str = ""
+    author_name: str = ""
+    language_name: str = ""
+    slug: str = ""
 
 
 class ChapterSummary(BaseModel):
@@ -96,7 +110,7 @@ class StreakRequest(BaseModel):
     ayah_read: str = Field(..., min_length=1, max_length=32, description="Verse key e.g. 2:255")
     activity_date: date | None = Field(
         default=None,
-        description="UTC calendar date; defaults to today UTC if omitted",
+        description="Ledger calendar date (server TZ); defaults to today in ASAR ledger timezone if omitted",
     )
 
 
@@ -128,10 +142,18 @@ class TokenResponse(BaseModel):
     expires_in: int
 
 
+class LedgerTimezonePatch(BaseModel):
+    """IANA timezone name for streak / History Ledger day boundaries (e.g. Asia/Karachi, Europe/London)."""
+
+    ledger_timezone: str = Field(..., min_length=1, max_length=64)
+
+
 class UserMe(BaseModel):
     id: int
     email: str
     asar_session_id: str
+    # Resolved IANA zone for mark-complete / History Ledger (user override or ASAR_LEDGER_TIMEZONE).
+    ledger_timezone: str = "Asia/Karachi"
     onboarding_completed: bool = False
     onboarding_goal: str | None = None
     onboarding_level: str | None = None

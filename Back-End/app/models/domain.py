@@ -84,6 +84,8 @@ class User(Base):
     reading_start_ayah: Mapped[int | None] = mapped_column(Integer, nullable=True)
     reading_scope: Mapped[str | None] = mapped_column(String(24), nullable=True)
     reading_scope_surah: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Optional IANA override for streak ledger day (null = use ASAR_LEDGER_TIMEZONE from settings).
+    ledger_timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     reading_daily_stats: Mapped[list["ReadingDailyStat"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
@@ -94,7 +96,7 @@ class User(Base):
 
 
 class ReadingDailyStat(Base):
-    """Per-user UTC-day count of Mark complete taps (for dashboard ring / analytics)."""
+    """Per-user ledger-calendar-day count of Mark complete taps (for dashboard ring / analytics)."""
 
     __tablename__ = "reading_daily_stats"
     __table_args__ = (UniqueConstraint("user_id", "activity_date", name="uq_reading_daily_user_day"),)

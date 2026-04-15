@@ -22,6 +22,10 @@ export type ChatMessageRequestPayload = {
   session_id: string
   history: ChatTurnPayload[]
   message: string
+  /** ISO 639-1 e.g. ur, fr — optional; defaults to browser / heuristic */
+  answer_language?: string
+  /** Quran.com translation resource id — optional advanced override */
+  translation_resource_id?: number
 }
 
 export type ChatMessageResponse = {
@@ -102,6 +106,8 @@ export type UserMe = {
   email: string
   /** Server-owned session for chat/streak/history when authenticated. */
   asar_session_id: string
+  /** IANA zone for streak / History Ledger (server default or user override). */
+  ledger_timezone?: string
   onboarding_completed: boolean
   onboarding_goal?: string | null
   onboarding_level?: string | null
