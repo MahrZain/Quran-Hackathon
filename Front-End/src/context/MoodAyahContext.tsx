@@ -13,7 +13,8 @@ import {
 } from 'react'
 import { useAuth } from './AuthContext'
 import { useAppSession } from '../hooks/useAppSession'
-import type { HistoryMessage } from '../lib/apiTypes'
+import type { HistoryMessage, TranslationResourceOut } from '../lib/apiTypes'
+import { apiClient } from '../lib/apiClient'
 import {
   fetchHistoryDeduped,
   fetchStreakSnapshotDeduped,
@@ -33,6 +34,19 @@ import { scheduleIdleTask } from '../lib/scheduleIdle'
 export type VerseEnrichmentStatus = 'pending' | 'text_ready' | 'ready' | 'unavailable'
 
 const TRANSLATION_LOADING_PLACEHOLDER = 'Loading translation…'
+
+const DASHBOARD_TR_STORAGE_KEY = 'asar_dashboard_translation_resource_id'
+
+function loadDashboardTranslationResourceId(): number | null {
+  try {
+    const v = localStorage.getItem(DASHBOARD_TR_STORAGE_KEY)
+    if (v == null || v === '') return null
+    const n = parseInt(v, 10)
+    return Number.isFinite(n) && n >= 1 ? n : null
+  } catch {
+    return null
+  }
+}
 
 type MoodAyahContextValue = {
   displayAyah: DailyAyah
@@ -55,6 +69,12 @@ type MoodAyahContextValue = {
   /** Mark-complete taps today (UTC, from server) — drives part of the dashboard ring. */
   ayahsMarkedToday: number
   syncAyahsMarkedToday: (n: number) => void
+  /** null = server default translation on GET /verse */
+  dashboardTranslationResourceId: number | null
+  setDashboardTranslationResourceId: (id: number | null) => void
+  translationResources: TranslationResourceOut[]
+  translationsCatalogLoading: boolean
+  translationsCatalogError: boolean
 }
 
 const MoodAyahContext = createContext<MoodAyahContextValue | null>(null)
@@ -71,6 +91,22 @@ export function MoodAyahProvider({ children }: { children: ReactNode }) {
   const [sessionHistoryError, setSessionHistoryError] = useState(false)
   const [verseEnrichmentStatus, setVerseEnrichmentStatus] = useState<VerseEnrichmentStatus>('pending')
   const [ayahsMarkedToday, setAyahsMarkedToday] = useState(0)
+  const [dashboardTranslationResourceId, setDashboardTranslationResourceIdState] = useState<number | null>(
+    () => loadDashboardTranslationResourceId(),
+  )
+  const [translationResources, setTranslationResources] = useState<TranslationResourceOut[]>([])
+  const [translationsCatalogLoading, setTranslationsCatalogLoading] = useState(true)
+  const [translationsCatalogError, setTranslationsCatalogError] = useState(false)
+
+  const setDashboardTranslationResourceId = useCallback((id: number | null) => {
+    setDashboardTranslationResourceIdState(id)
+    try {
+      if (id == null) localStorage.removeItem(DASHBOARD_TR_STORAGE_KEY)
+      else localStorage.setItem(DASHBOARD_TR_STORAGE_KEY, String(id))
+    } catch {
+      /* ignore */
+    }
+  }, [])
 
   const historyRetryGenRef = useRef(0)
   const historyRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -182,6 +218,28 @@ export function MoodAyahProvider({ children }: { children: ReactNode }) {
     }
   }, [sessionId, applyHistoryMessages, cancelHistoryRetries, scheduleHistoryRetries])
 
+  /** Translation editions for dashboard picker (GET /translations). */
+  useEffect(() => {
+    let cancelled = false
+    setTranslationsCatalogLoading(true)
+    setTranslationsCatalogError(false)
+    void apiClient
+      .get<TranslationResourceOut[]>('/translations')
+      .then(({ data }) => {
+        if (cancelled) return
+        setTranslationResources(Array.isArray(data) ? data : [])
+      })
+      .catch(() => {
+        if (!cancelled) setTranslationsCatalogError(true)
+      })
+      .finally(() => {
+        if (!cancelled) setTranslationsCatalogLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   /** Server reading cursor or legacy recommended key (GET /auth/me). */
   useEffect(() => {
     const key = user?.current_verse_key || user?.recommended_verse_key
@@ -228,7 +286,7 @@ export function MoodAyahProvider({ children }: { children: ReactNode }) {
     startTransition(() => setVerseEnrichmentStatus('pending'))
     const h = scheduleIdleTask(
       () => {
-        void fetchVerseBundleDeduped(verseKey)
+        void fetchVerseBundleDeduped(verseKey, dashboardTranslationResourceId)
           .then((bundle) => {
             if (cancelled) return
             const ar = bundle.verse_text_uthmani?.trim()
@@ -294,7 +352,7 @@ export function MoodAyahProvider({ children }: { children: ReactNode }) {
       cancelled = true
       h.cancel()
     }
-  }, [sessionId, displayAyah.surahId, displayAyah.ayahNumber])
+  }, [sessionId, displayAyah.surahId, displayAyah.ayahNumber, dashboardTranslationResourceId])
 
   const value = useMemo(
     () => ({
@@ -311,6 +369,11 @@ export function MoodAyahProvider({ children }: { children: ReactNode }) {
       verseEnrichmentStatus,
       ayahsMarkedToday,
       syncAyahsMarkedToday,
+      dashboardTranslationResourceId,
+      setDashboardTranslationResourceId,
+      translationResources,
+      translationsCatalogLoading,
+      translationsCatalogError,
     }),
     [
       displayAyah,
@@ -325,6 +388,11 @@ export function MoodAyahProvider({ children }: { children: ReactNode }) {
       verseEnrichmentStatus,
       ayahsMarkedToday,
       syncAyahsMarkedToday,
+      dashboardTranslationResourceId,
+      setDashboardTranslationResourceId,
+      translationResources,
+      translationsCatalogLoading,
+      translationsCatalogError,
     ],
   )
 

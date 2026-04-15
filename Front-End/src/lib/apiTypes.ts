@@ -132,6 +132,15 @@ export type VerseBundleResponse = {
   audio_url: string | null
 }
 
+/** GET /translations — Quran.com translation resource for dashboard picker */
+export type TranslationResourceOut = {
+  id: number
+  name: string
+  author_name: string
+  language_name: string
+  slug: string
+}
+
 export type ChapterSummary = {
   id: number
   name: string

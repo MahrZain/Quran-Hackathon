@@ -36,9 +36,18 @@ export function invalidateStreakActivitiesCache(sessionId: string, limit = 200) 
   inflight.delete(`streakActs:${sessionId}:${limit}`)
 }
 
-export function fetchVerseBundleDeduped(verseKey: string) {
-  return share(`verse:${verseKey}`, () =>
-    apiClient.get<VerseBundleResponse>('/verse', { params: { verse_key: verseKey } }).then((r) => r.data),
+function verseCacheKey(verseKey: string, translationResourceId?: number | null) {
+  const tr = translationResourceId != null && translationResourceId >= 1 ? String(translationResourceId) : 'default'
+  return `verse:${verseKey}:tr:${tr}`
+}
+
+export function fetchVerseBundleDeduped(verseKey: string, translationResourceId?: number | null) {
+  const params: { verse_key: string; translation_resource_id?: number } = { verse_key: verseKey }
+  if (translationResourceId != null && translationResourceId >= 1) {
+    params.translation_resource_id = translationResourceId
+  }
+  return share(verseCacheKey(verseKey, translationResourceId), () =>
+    apiClient.get<VerseBundleResponse>('/verse', { params }).then((r) => r.data),
   )
 }
 
