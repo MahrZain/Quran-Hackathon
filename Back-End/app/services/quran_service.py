@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import functools
 import json
 import logging
@@ -14,6 +15,7 @@ import httpx
 
 from app.core.config import Settings, get_settings
 from app.services.surah_verse_counts import verse_count_for_surah
+from app.services.verse_key_utils import VERSE_KEY_PATTERN
 
 log = logging.getLogger(__name__)
 
@@ -34,8 +36,6 @@ _SURAH_NAME_TYPO: dict[str, str] = {
     "dhuha": "duhaa",
     "zuha": "duhaa",
 }
-
-_VERSE_KEY_RE = re.compile(r"^\d{1,3}:\d{1,3}$")
 
 # Surah name after "surah …" (no bare `\s` inside a lazy quantifier — it wrongly matched "n " for "surat nas …").
 _SURAH_NAME_CAPTURE = r"[a-zA-Z'’\u2019\-]+(?:\s+[a-zA-Z'’\u2019\-]+){0,5}"
@@ -154,7 +154,7 @@ def _expand_surah_to_verse_keys(surah_id: int, max_keys: int) -> list[str]:
 def adjacent_verse_keys(verse_key: str) -> list[str]:
     """Prev, center, next in reading order (deduped). Invalid keys return []."""
     vk = (verse_key or "").strip()
-    if not _VERSE_KEY_RE.match(vk):
+    if not VERSE_KEY_PATTERN.match(vk):
         return []
     parts = vk.split(":")
     surah, ayah = int(parts[0]), int(parts[1])
@@ -200,7 +200,7 @@ def verse_keys_from_natural_language_query(text: str, *, max_keys: int = 8) -> l
         vk = f"{surah}:{ayah}"
         if vk in seen:
             return
-        if not _VERSE_KEY_RE.match(vk):
+        if not VERSE_KEY_PATTERN.match(vk):
             return
         seen.add(vk)
         found.append(vk)
@@ -298,6 +298,86 @@ _oauth_skip_until_monotonic: float = 0.0
 def _content_api_public_fallback_eligible(settings: Settings) -> bool:
     b = (settings.quran_api_base_url or "").strip().rstrip("/").lower()
     return bool(b) and not b.endswith("api.quran.com/api/v4")
+
+
+_RETRIABLE_QURAN_TRANSPORT_ERRORS: tuple[type[BaseException], ...] = (
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.ReadTimeout,
+    httpx.ReadError,
+    httpx.RemoteProtocolError,
+    httpx.PoolTimeout,
+)
+
+
+def _is_retriable_quran_transport_error(exc: BaseException) -> bool:
+    return isinstance(exc, _RETRIABLE_QURAN_TRANSPORT_ERRORS)
+
+
+async def _sleep_quran_retry_backoff(attempt_index: int) -> None:
+    await asyncio.sleep(min(0.15 * (2**attempt_index), 1.5))
+
+
+async def _content_api_get_with_retry_and_public_fallback(
+    settings: Settings,
+    *,
+    path_under_v4: str,
+    params: dict[str, str] | None,
+    primary_headers: dict[str, str],
+    timeout: float = 30.0,
+    public_on_http_404: bool = True,
+    public_on_http_5xx: bool = True,
+    max_primary_attempts: int = 3,
+) -> httpx.Response:
+    """
+    GET against configured Content API base with transport retries, then optional public v4 fallback.
+
+    When primary base is not already api.quran.com/api/v4, retries on transient transport errors and
+    falls back to public v4 on exhausted retries, HTTP 404, or selected 5xx (aligned with /search).
+    """
+    client = _client_or_raise()
+    base = settings.quran_api_base_url.rstrip("/")
+    path = path_under_v4.lstrip("/")
+    primary_url = f"{base}/{path}"
+    public_url = f"{_PUBLIC_CONTENT_API_V4}/{path}"
+    eligible = _content_api_public_fallback_eligible(settings)
+
+    r: httpx.Response | None = None
+    for attempt in range(max_primary_attempts):
+        try:
+            r = await client.get(primary_url, params=params, headers=primary_headers, timeout=timeout)
+            break
+        except httpx.RequestError as e:
+            if _is_retriable_quran_transport_error(e) and attempt < max_primary_attempts - 1:
+                await _sleep_quran_retry_backoff(attempt)
+                continue
+            if eligible:
+                log.debug(
+                    "Quran Content GET primary failed (%s: %s); trying public api.quran.com for /%s",
+                    type(e).__name__,
+                    e,
+                    path,
+                )
+                r = await client.get(public_url, params=params, headers={}, timeout=timeout)
+                break
+            raise
+    assert r is not None
+
+    if public_on_http_404 and r.status_code == 404 and eligible:
+        log.debug("Quran Content GET 404 on primary; retrying public api.quran.com for /%s", path)
+        r = await client.get(public_url, params=params, headers={}, timeout=timeout)
+    elif (
+        public_on_http_5xx
+        and r.status_code in (500, 502, 503, 504)
+        and eligible
+    ):
+        log.debug(
+            "Quran Content GET HTTP %s on primary; retrying public api.quran.com for /%s",
+            r.status_code,
+            path,
+        )
+        r = await client.get(public_url, params=params, headers={}, timeout=timeout)
+    return r
 
 
 def set_http_client(client: httpx.AsyncClient | None) -> None:
@@ -468,8 +548,6 @@ def _verse_uthmani_and_translation_from_payload(
 async def fetch_verse_text(verse_key: str, settings: Settings | None = None) -> str:
     """Return Arabic + simple English text for a verse key (surah:ayah)."""
     s = settings or get_settings()
-    client = _client_or_raise()
-    url = f"{s.quran_api_base_url.rstrip('/')}/verses/by_key/{verse_key}"
     tr_id = int(s.quran_translation_resource_id)
     params = _verse_by_key_params(
         s,
@@ -477,10 +555,13 @@ async def fetch_verse_text(verse_key: str, settings: Settings | None = None) -> 
         fields="text_uthmani,text_imlaei,translations",
     )
     headers = await _auth_headers(s)
-    r = await client.get(url, params=params, headers=headers, timeout=30.0)
-    if r.status_code == 404 and _content_api_public_fallback_eligible(s):
-        pub = f"{_PUBLIC_CONTENT_API_V4}/verses/by_key/{verse_key}"
-        r = await client.get(pub, params=params, headers={}, timeout=30.0)
+    r = await _content_api_get_with_retry_and_public_fallback(
+        s,
+        path_under_v4=f"verses/by_key/{verse_key}",
+        params=params,
+        primary_headers=headers,
+        timeout=30.0,
+    )
     r.raise_for_status()
     data: dict[str, Any] = r.json()
     text_uthmani, trans = _verse_uthmani_and_translation_from_payload(
@@ -499,22 +580,19 @@ async def fetch_verse_uthmani_and_translation(
     """Uthmanic Arabic and first translation line for UI + chat metadata."""
     s = settings or get_settings()
     tr_id = int(translation_resource_id) if translation_resource_id is not None else int(s.quran_translation_resource_id)
-    client = _client_or_raise()
-    url = f"{s.quran_api_base_url.rstrip('/')}/verses/by_key/{verse_key}"
     params = _verse_by_key_params(
         s,
         translation_resource_id=tr_id,
         fields="text_uthmani,text_imlaei,translations",
     )
     headers = await _auth_headers(s)
-    r = await client.get(url, params=params, headers=headers, timeout=30.0)
-    if r.status_code == 404 and _content_api_public_fallback_eligible(s):
-        log.debug(
-            "verse by_key 404 on configured base; retrying public api.quran.com for %s",
-            verse_key,
-        )
-        pub = f"{_PUBLIC_CONTENT_API_V4}/verses/by_key/{verse_key}"
-        r = await client.get(pub, params=params, headers={}, timeout=30.0)
+    r = await _content_api_get_with_retry_and_public_fallback(
+        s,
+        path_under_v4=f"verses/by_key/{verse_key}",
+        params=params,
+        primary_headers=headers,
+        timeout=30.0,
+    )
     r.raise_for_status()
     data: dict[str, Any] = r.json()
     return _verse_uthmani_and_translation_from_payload(data, preferred_translation_resource_id=tr_id)
@@ -529,13 +607,14 @@ async def fetch_tafsir_or_translation(
     """Fetch translation / commentary text for RAG context (resource id from settings or override)."""
     s = settings or get_settings()
     rid = int(translation_resource_id) if translation_resource_id is not None else int(s.quran_translation_resource_id)
-    client = _client_or_raise()
-    url = f"{s.quran_api_base_url.rstrip('/')}/quran/translations/{rid}"
     params = {"verse_key": verse_key}
-    r = await client.get(url, params=params, headers=await _auth_headers(s), timeout=30.0)
-    if r.status_code == 404 and _content_api_public_fallback_eligible(s):
-        pub = f"{_PUBLIC_CONTENT_API_V4}/quran/translations/{rid}"
-        r = await client.get(pub, params=params, headers={}, timeout=30.0)
+    r = await _content_api_get_with_retry_and_public_fallback(
+        s,
+        path_under_v4=f"quran/translations/{rid}",
+        params=params,
+        primary_headers=await _auth_headers(s),
+        timeout=30.0,
+    )
     r.raise_for_status()
     data = r.json()
     trs = data.get("translations") or []
@@ -621,7 +700,7 @@ async def search_verse_keys(query: str, *, limit: int = 8, settings: Settings | 
     out: list[str] = []
     for item in _search_result_dicts(body):
         vk = _verse_key_from_search_hit(item)
-        if vk and _VERSE_KEY_RE.match(vk) and vk not in out:
+        if vk and VERSE_KEY_PATTERN.match(vk) and vk not in out:
             out.append(vk)
         if len(out) >= lim:
             break

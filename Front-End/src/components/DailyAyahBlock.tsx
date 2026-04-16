@@ -1,4 +1,4 @@
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, Share2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMoodAyah, type VerseEnrichmentStatus } from '../context/MoodAyahContext'
@@ -278,9 +278,7 @@ export function DailyAyahBlock({ ayah, className = '' }: DailyAyahBlockProps) {
             }
             className="flex items-center gap-2 text-sm font-bold text-primary/80 hover:text-primary"
           >
-            <span className="material-symbols-outlined text-base" aria-hidden>
-              ios_share
-            </span>
+            <Share2 className="h-4 w-4 shrink-0" aria-hidden />
             Share
           </button>
           <button

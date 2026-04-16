@@ -1,4 +1,4 @@
-import { Send, Trash2 } from 'lucide-react'
+import { Send, Share2, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ChatThinkingIndicator } from '../components/ChatThinkingIndicator'
@@ -59,9 +59,7 @@ function AyahCard({ v }: { v: ChatVerseCard }) {
           }
           className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold text-primary/80 hover:bg-primary/10 hover:text-primary"
         >
-          <span className="material-symbols-outlined text-base" aria-hidden>
-            ios_share
-          </span>
+          <Share2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
           Share
         </button>
       </div>

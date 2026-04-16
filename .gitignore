@@ -19,3 +19,5 @@ Front-End/.env
 Front-End/.env.*
 !Front-End/.env.example
 !Front-End/.env.production.example
+ASAR_Technical_Documentation.docx
+DOCUMENTATION.md

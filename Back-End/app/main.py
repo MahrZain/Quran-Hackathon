@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from openai import AsyncOpenAI
 
-from app.api.auth_routes import ensure_demo_account_ready, router as auth_router
+from app.api.auth import ensure_demo_account_ready, router as auth_router
 from app.api.routes import router
 from app.core.config import get_settings
 from app.core.logging_config import setup_logging
@@ -30,16 +30,13 @@ def _cors_allow_origins() -> list[str]:
     ]
 
 
-_s = get_settings()
-if len(_s.jwt_secret_key) < 24 or "change-me" in _s.jwt_secret_key.lower():
-    log.warning(
-        "JWT_SECRET_KEY is short or looks like a placeholder — use a long random secret in .env for production"
-    )
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+    if len(settings.jwt_secret_key) < 24 or "change-me" in settings.jwt_secret_key.lower():
+        log.warning(
+            "JWT_SECRET_KEY is short or looks like a placeholder — use a long random secret in .env for production"
+        )
     client = httpx.AsyncClient(
         timeout=httpx.Timeout(30.0),
         limits=httpx.Limits(max_keepalive_connections=10, max_connections=30),
@@ -61,6 +58,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="ASAR Engine", version="1.0", lifespan=lifespan)
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    """Liveness probe — no DB or external calls (12-factor disposability)."""
+    return {"status": "ok"}
+
 
 app.add_middleware(
     CORSMiddleware,

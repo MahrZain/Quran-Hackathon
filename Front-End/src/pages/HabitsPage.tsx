@@ -81,11 +81,14 @@ export function HabitsPage() {
       if (document.visibilityState === 'visible') void load({ bustCache: true })
     }
     const onLedgerRefresh = () => void load({ bustCache: true })
+    const onLedgerDay = () => void load({ bustCache: true })
     document.addEventListener('visibilitychange', onVis)
     window.addEventListener('asar:ledger-refresh', onLedgerRefresh)
+    window.addEventListener('asar:ledger-day-changed', onLedgerDay)
     return () => {
       document.removeEventListener('visibilitychange', onVis)
       window.removeEventListener('asar:ledger-refresh', onLedgerRefresh)
+      window.removeEventListener('asar:ledger-day-changed', onLedgerDay)
     }
   }, [load])
 

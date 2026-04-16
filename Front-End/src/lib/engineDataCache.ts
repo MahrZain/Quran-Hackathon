@@ -23,6 +23,11 @@ export function fetchStreakSnapshotDeduped(sessionId: string) {
   )
 }
 
+/** Drop coalesced GET so the next snapshot fetch hits the engine (e.g. new ledger day). */
+export function invalidateStreakSnapshotCache(sessionId: string) {
+  inflight.delete(`streak:${sessionId}`)
+}
+
 export function fetchStreakActivitiesDeduped(sessionId: string, limit = 120) {
   return share(`streakActs:${sessionId}:${limit}`, () =>
     apiClient

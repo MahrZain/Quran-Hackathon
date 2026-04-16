@@ -61,6 +61,21 @@ def test_sanitize_strips_tatweel_digit_garbage():
     assert "077" not in out
 
 
+def test_sanitize_strips_markdown_artifacts():
+    raw = (
+        "**From the verses (paraphrase):**\n"
+        "— line\n"
+        "## Reflection:\n"
+        "x __y__\n"
+        "### z"
+    )
+    out = _sanitize_model_answer(raw)
+    assert "**" not in out
+    assert "__" not in out
+    assert "From the verses (paraphrase):" in out
+    assert not out.lstrip().startswith("#")
+
+
 def test_boost_search_adds_patience_synonyms_for_sabr():
     q = _boost_search_query_for_topics("verses about sabr")
     assert "patience" in q.lower()

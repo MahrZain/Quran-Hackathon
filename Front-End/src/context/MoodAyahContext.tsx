@@ -19,6 +19,7 @@ import {
   fetchHistoryDeduped,
   fetchStreakSnapshotDeduped,
   fetchVerseBundleDeduped,
+  invalidateStreakSnapshotCache,
   preloadAudioFromUrl,
 } from '../lib/engineDataCache'
 import {
@@ -81,7 +82,7 @@ const MoodAyahContext = createContext<MoodAyahContextValue | null>(null)
 
 export function MoodAyahProvider({ children }: { children: ReactNode }) {
   const { sessionId } = useAppSession()
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const [displayAyah, setDisplayAyah] = useState<DailyAyah>(() => getColdStartDailyAyah())
   const [streakCount, setStreakCount] = useState(0)
   const [sessionUserMessages, setSessionUserMessages] = useState(0)
@@ -97,6 +98,8 @@ export function MoodAyahProvider({ children }: { children: ReactNode }) {
   const [translationResources, setTranslationResources] = useState<TranslationResourceOut[]>([])
   const [translationsCatalogLoading, setTranslationsCatalogLoading] = useState(true)
   const [translationsCatalogError, setTranslationsCatalogError] = useState(false)
+  /** Bumped on `asar:ledger-day-changed` so streak snapshot refetches after midnight (tab left open). */
+  const [ledgerDayRevision, setLedgerDayRevision] = useState(0)
 
   const setDashboardTranslationResourceId = useCallback((id: number | null) => {
     setDashboardTranslationResourceIdState(id)
@@ -259,11 +262,20 @@ export function MoodAyahProvider({ children }: { children: ReactNode }) {
   }, [user?.current_verse_key, user?.recommended_verse_key, user?.id])
 
   useEffect(() => {
-    const n = user?.ayahs_marked_today
-    if (typeof n === 'number' && !Number.isNaN(n)) {
-      startTransition(() => syncAyahsMarkedToday(n))
+    if (authLoading) return
+    if (!user) {
+      startTransition(() => syncAyahsMarkedToday(0))
+      return
     }
-  }, [user?.ayahs_marked_today, user?.id, syncAyahsMarkedToday])
+    const n = user.ayahs_marked_today
+    startTransition(() => syncAyahsMarkedToday(typeof n === 'number' && !Number.isNaN(n) ? n : 0))
+  }, [authLoading, user, syncAyahsMarkedToday])
+
+  useEffect(() => {
+    const bump = () => setLedgerDayRevision((r) => r + 1)
+    window.addEventListener('asar:ledger-day-changed', bump)
+    return () => window.removeEventListener('asar:ledger-day-changed', bump)
+  }, [])
 
   /** Streak snapshot: starts immediately (deduped); UI update is non-urgent. */
   useEffect(() => {
@@ -278,6 +290,22 @@ export function MoodAyahProvider({ children }: { children: ReactNode }) {
       cancelled = true
     }
   }, [sessionId, displayAyah.surahId, displayAyah.ayahNumber, syncStreakCount])
+
+  /** After a new ledger civil day, bust GET coalescing so the ring / streak match the new day. */
+  useEffect(() => {
+    if (ledgerDayRevision === 0) return
+    let cancelled = false
+    invalidateStreakSnapshotCache(sessionId)
+    void fetchStreakSnapshotDeduped(sessionId)
+      .then((snap) => {
+        if (cancelled) return
+        startTransition(() => syncStreakCount(snap.updated_streak_count))
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [sessionId, syncStreakCount, ledgerDayRevision])
 
   /** Verse bundle: idle after paint so Daily ASAR + layout stay responsive; merges when ready. */
   useEffect(() => {

@@ -1,3 +1,4 @@
+import { Share2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { QuranAyahText } from '../components/QuranAyahText'
@@ -71,9 +72,7 @@ export function FocusPage() {
                 }
                 className="inline-flex items-center gap-2 rounded-xl border border-primary/30 bg-surface-container-low px-4 py-2 text-sm font-semibold text-primary hover:bg-primary/10"
               >
-                <span className="material-symbols-outlined text-base" aria-hidden>
-                  ios_share
-                </span>
+                <Share2 className="h-4 w-4 shrink-0" aria-hidden />
                 Share
               </button>
             </div>

@@ -37,16 +37,16 @@ _GOLDEN = (
 )
 
 _ANSWER_POLICY = (
-    "Structure your reply in two labeled parts (use exactly these headings): "
-    "**From the verses (paraphrase):** — only restate what the provided translations say, verse by verse if needed. "
-    "**Reflection:** — at most 2 short sentences of gentle personal reflection tied strictly to those meanings; "
+    "Structure your reply in two labeled parts (plain text only — no markdown: no asterisks for bold/italic, "
+    "no # headings, no underscores for emphasis). Use exactly these two labels as plain lines: "
+    "From the verses (paraphrase): — only restate what the provided translations say, verse by verse if needed. "
+    "Reflection: — at most 2 short sentences of gentle personal reflection tied strictly to those meanings; "
     "label it clearly and do not present reflection as a literal Quranic quote. "
     "Do not stretch a verse to an unrelated theme (e.g. do not use the Khidr and Mūsā story about "
     "\"patience without knowledge\" to answer being wronged by other people unless that exact topic appears in the text). "
     "Where scholarly interpretation of a phrase differs, say briefly that interpretations differ; "
     "do not assert one reading as the only meaning. "
-    "Never output HTML, XML, BBCode, or angle-bracket markup inside Arabic or English; "
-    "plain text and markdown headings/bullets only. "
+    "Never output HTML, XML, BBCode, or angle-bracket markup inside Arabic or English. "
     "Do not invent or truncate Arabic phrases: for any Arabic words outside the supplied Uthmani lines, "
     "omit them rather than guessing."
 )
@@ -214,7 +214,8 @@ def _sanitize_model_answer(text: str) -> str:
     """Strip leaked markup / known corruption patterns from model output."""
     if not text:
         return text
-    t = re.sub(r"(?i)bibr+", "", text)
+    t = text
+    t = re.sub(r"(?i)bibr+", "", t)
     t = re.sub(r"<[^>\n]{0,400}?>", "", t)
     t = re.sub(r"</[a-zA-Z]{1,20}>", "", t)
     # Models sometimes inject digit runs after tatweel/kashida/diacritics (e.g. "تَــ077", "غَفُ077").
@@ -228,6 +229,9 @@ def _sanitize_model_answer(text: str) -> str:
         if t2 == t:
             break
         t = t2
+    # LLM markdown artifacts (UI shows these as literal characters).
+    t = t.replace("**", "").replace("__", "")
+    t = re.sub(r"(?m)^#{1,6}\s+", "", t)
     t = re.sub(r"[ \t]{2,}", " ", t)
     return t.strip()
 
@@ -706,7 +710,7 @@ async def run_rest_rag_chat(
         "You are a concise Muslim assistant. Answer ONLY using the Quran context block below. "
         "Do not invent verses or translations. When you mention a verse, cite ONLY references that "
         f"appear in the context block (exactly: {ref_list}). Do not cite any other surah:ayah numbers. "
-        f"Write the **entire** answer in {lang_phrase}, except keep Arabic Uthmani script as given. "
+        f"Write the entire answer in {lang_phrase}, except keep Arabic Uthmani script as given. "
         "Do not paste HTML/XML/BBCode tags inside Arabic text."
     )
     system = base_rules + "\n\n--- Quran REST context ---\n" + plain
@@ -738,8 +742,8 @@ async def run_rest_rag_chat(
             log.info("chat/message alignment rewrite")
             rewrite_sys = (
                 base_rules
-                + "\n\nYour prior answer went beyond the translations. Rewrite: keep **From the verses** "
-                "strictly to paraphrase; shorten **Reflection** or omit if unsupported."
+                + "\n\nYour prior answer went beyond the translations. Rewrite: keep From the verses (paraphrase) "
+                "strictly to paraphrase; shorten Reflection or omit if unsupported."
                 + "\n\n--- Quran REST context ---\n"
                 + plain
             )

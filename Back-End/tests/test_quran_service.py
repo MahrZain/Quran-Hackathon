@@ -5,6 +5,7 @@ import os
 import httpx
 import pytest
 
+from app.core.config import Settings
 from app.services import quran_service
 from app.services.quran_service import normalize_translation_resource_row
 
@@ -140,3 +141,52 @@ async def test_fetch_verse_text_with_api_key(httpx_client):
     text = await quran_service.fetch_verse_text("1:1")
     assert isinstance(text, str)
     assert len(text) > 10
+
+
+@pytest.mark.asyncio
+async def test_fetch_verse_uthmani_retries_after_connect_error(httpx_client, monkeypatch):
+    """Primary host (public v4): retries same URL on transient ConnectError before succeeding."""
+    calls: list[str] = []
+    payload = {
+        "text_uthmani": "بسم",
+        "translations": [{"resource_id": 85, "text": "In the name"}],
+    }
+
+    async def fake_get(url: str, **kwargs: object) -> httpx.Response:
+        calls.append(str(url))
+        if len(calls) == 1:
+            raise httpx.ConnectError("simulated", request=httpx.Request("GET", url))
+        return httpx.Response(200, json=payload, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx_client, "get", fake_get)
+    s = Settings(quran_api_base_url="https://api.quran.com/api/v4", quran_translation_resource_id=85)
+    uth, tr = await quran_service.fetch_verse_uthmani_and_translation("1:1", settings=s)
+    assert uth == "بسم" and tr == "In the name"
+    assert len(calls) == 2
+    assert all("api.quran.com" in u for u in calls)
+
+
+@pytest.mark.asyncio
+async def test_fetch_verse_uthmani_public_fallback_after_primary_transport_errors(httpx_client, monkeypatch):
+    """Non-public base: after exhausting primary transport retries, GET public api.quran.com."""
+    calls: list[str] = []
+    payload = {
+        "text_uthmani": "x",
+        "translations": [{"resource_id": 85, "text": "y"}],
+    }
+
+    async def fake_get(url: str, **kwargs: object) -> httpx.Response:
+        calls.append(str(url))
+        if "prelive-api.quran.foundation" in str(url):
+            raise httpx.ConnectError("simulated", request=httpx.Request("GET", url))
+        return httpx.Response(200, json=payload, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx_client, "get", fake_get)
+    s = Settings(
+        quran_api_base_url="https://prelive-api.quran.foundation/api/v4",
+        quran_translation_resource_id=85,
+    )
+    uth, tr = await quran_service.fetch_verse_uthmani_and_translation("1:1", settings=s)
+    assert uth == "x" and tr == "y"
+    assert any("api.quran.com" in c for c in calls)
+    assert sum(1 for c in calls if "prelive-api.quran.foundation" in c) == 3

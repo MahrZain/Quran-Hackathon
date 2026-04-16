@@ -124,6 +124,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       if (ymd !== prev) {
         lastLedgerYmdRef.current = ymd
+        if (prev !== null) {
+          try {
+            window.dispatchEvent(new CustomEvent('asar:ledger-day-changed', { detail: { ymd } }))
+          } catch {
+            /* ignore */
+          }
+        }
         void refreshUser()
       }
     }
