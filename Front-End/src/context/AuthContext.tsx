@@ -39,7 +39,7 @@ function engineOriginForOAuthStart(): string {
   if (explicit) return explicit.replace(/\/$/, '')
   const api = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim()
   if (api?.startsWith('http')) return api.replace(/\/api\/v1\/?$/, '').replace(/\/$/, '')
-  if (import.meta.env.DEV) return 'http://127.0.0.1:8000'
+  if (import.meta.env.DEV) return 'http://localhost:8000'
   return typeof window !== 'undefined' ? window.location.origin : ''
 }
 

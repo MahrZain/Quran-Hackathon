@@ -27,6 +27,28 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _authorize_url_preview(s: Settings) -> str:
+    """Synthetic authorize URL for debugging (state / PKCE challenge redacted)."""
+    cid = (s.quran_client_id or s.quran_oauth_client_id or "").strip()
+    if not cid:
+        return ""
+    auth_url = quran_user_service.oauth_authorize_endpoint(s)
+    redirect_uri = (s.quran_oauth_redirect_uri or "").strip()
+    scope = (s.quran_oauth_authorize_scopes or "").strip() or "openid offline_access user streak"
+    qs = urllib.parse.urlencode(
+        {
+            "response_type": "code",
+            "client_id": cid,
+            "redirect_uri": redirect_uri,
+            "scope": scope,
+            "state": "<redacted>",
+            "code_challenge": "<redacted>",
+            "code_challenge_method": "S256",
+        }
+    )
+    return f"{auth_url}?{qs}"
+
+
 def _pkce_cookie_value(verifier: str, state: str) -> str:
     s = get_settings()
     exp = int((datetime.now(timezone.utc) + timedelta(minutes=10)).timestamp())
@@ -45,6 +67,32 @@ def _decode_pkce_cookie(raw: str) -> dict:
 def _pkce_cookie_secure(s: Settings) -> bool:
     """Match OAuth redirect scheme so browsers keep / clear the PKCE cookie correctly on HTTPS."""
     return (s.quran_oauth_redirect_uri or "").strip().lower().startswith("https://")
+
+
+@router.get("/quran/redirect-uri-hint")
+def quran_oauth_redirect_uri_hint() -> dict[str, str]:
+    """
+    Public helper for Quran Foundation console setup.
+
+    Hydra returns *redirect_uri does not match* until this exact string (scheme, host, port, path)
+    is added to your OAuth2 client's redirect URLs. Default ASAR value is
+    ``http://localhost:8000/callback`` (same path as the official web example; port is usually 8000).
+    Legacy path ``/api/v1/auth/callback`` still works if you set ``QURAN_OAUTH_REDIRECT_URI`` accordingly.
+    See https://api-docs.quran.foundation/docs/tutorials/oidc/user-apis-quickstart/
+    """
+    s = get_settings()
+    redir = (s.quran_oauth_redirect_uri or "").strip()
+    cid_full = (s.quran_client_id or s.quran_oauth_client_id or "").strip()
+    return {
+        "redirect_uri": redir,
+        "authorization_endpoint": quran_user_service.oauth_authorize_endpoint(s),
+        "token_endpoint": (s.quran_oauth_token_url or "").strip(),
+        "client_id_prefix": (cid_full[:8] + "…") if cid_full else "",
+        "authorize_url_preview": _authorize_url_preview(s),
+        "docs_user_apis_quickstart": "https://api-docs.quran.foundation/docs/tutorials/oidc/user-apis-quickstart/",
+        "docs_web_example": "https://api-docs.quran.foundation/docs/tutorials/oidc/example-integration",
+        "support_email_note": "api-docs.quran.foundation — Request Access / redirect URI help",
+    }
 
 
 @router.get("/quran/start")
@@ -75,6 +123,12 @@ def quran_oauth_start() -> RedirectResponse:
         }
     )
     dest = f"{auth_url}?{qs}"
+    log.info(
+        "quran_oauth_start client_id_prefix=%s redirect_uri=%s authorize_endpoint=%s",
+        cid[:8] + "…",
+        redirect_uri,
+        auth_url,
+    )
     ret = RedirectResponse(url=dest, status_code=status.HTTP_302_FOUND)
     sec = _pkce_cookie_secure(s)
     ret.set_cookie(

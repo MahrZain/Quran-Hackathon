@@ -13,6 +13,7 @@ Back-End/asar.db
 Back-End/logs/
 Back-End/.env
 Back-End/.env.*
+!Back-End/.env.example
 
 # Front-End (extra; Front-End/.gitignore also applies when that folder is root)
 Front-End/.env

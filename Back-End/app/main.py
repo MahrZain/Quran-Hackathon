@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from openai import AsyncOpenAI
 
 from app.api.auth import ensure_demo_account_ready, router as auth_router
+from app.api.auth.oauth import quran_oauth_callback as quran_oauth_callback_handler
 from app.api.routes import router
 from app.core.config import get_settings
 from app.core.logging_config import setup_logging
@@ -49,6 +50,14 @@ async def lifespan(app: FastAPI):
     ai_service.set_openai_client(oa)
     with SessionLocal() as db:
         ensure_demo_account_ready(db)
+    if (settings.quran_oauth_client_id or settings.quran_client_id) and (
+        settings.quran_oauth_redirect_uri or ""
+    ).strip():
+        log.info(
+            "Quran OAuth: register this exact redirect_uri in your Foundation client — %s "
+            "(GET /api/v1/auth/quran/redirect-uri-hint for JSON)",
+            (settings.quran_oauth_redirect_uri or "").strip(),
+        )
     log.info("ASAR Engine started — HTTP + AI clients ready")
     yield
     log.info("ASAR Engine shutting down")
@@ -64,6 +73,13 @@ app = FastAPI(title="ASAR Engine", version="1.0", lifespan=lifespan)
 def health() -> dict[str, str]:
     """Liveness probe — no DB or external calls (12-factor disposability)."""
     return {"status": "ok"}
+
+
+# Quran Foundation OAuth callback at root path (same pattern as official web example `…/callback`).
+# Register http://localhost:8000/callback in your OAuth client; /api/v1/auth/callback remains valid too.
+app.add_api_route("/callback", quran_oauth_callback_handler, methods=["GET"], tags=["auth"])
+# Support extra path requested for production
+app.add_api_route("/auth/callback", quran_oauth_callback_handler, methods=["GET"], tags=["auth"])
 
 
 app.add_middleware(

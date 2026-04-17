@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     # Second LLM pass: YES/NO grounding check then one strict rewrite if NO (~one extra LongCat call per reply when verses exist).
     quran_chat_alignment_check_enabled: bool = True
     quran_chat_alignment_max_tokens: int = 96
-    # JSON map ISO 639-1 code -> Quran.com translation resource_id (see Back-End/.env.example and GET /resources/translations).
+    # JSON map ISO 639-1 code -> Quran.com translation resource_id (DOCUMENTATION.md §8.4; GET /resources/translations).
     quran_chat_translation_resources_json: str = "{}"
     quran_user_activity_url: str = ""
     # When the verse API omits `audio` (common on api.quran.com), build URL from this template.
@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     # Default matches https://api-docs.quran.foundation/docs/tutorials/oidc/user-apis-quickstart/ “Common scopes”.
     # If Quran Foundation enabled extra scopes for your app (e.g. activity_day), set QURAN_OAUTH_AUTHORIZE_SCOPES in .env.
     quran_oauth_authorize_scopes: str = "openid offline_access user streak bookmark"
-    quran_oauth_redirect_uri: str = "http://127.0.0.1:8000/api/v1/auth/callback"
+    quran_oauth_redirect_uri: str = "http://localhost:8000/callback"
     quran_user_api_base_url: str = "https://apis-prelive.quran.foundation"
     # Override if Foundation path differs (default: {quran_user_api_base_url}/auth/v1/bookmarks)
     quran_bookmarks_url: str = ""

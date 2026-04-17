@@ -11,7 +11,7 @@ function defaultApiBaseUrl(): string {
   if (import.meta.env.DEV) return '/api/v1'
   if (typeof window !== 'undefined' && window.location?.origin)
     return `${window.location.origin}/api/v1`
-  return 'http://127.0.0.1:8000/api/v1'
+  return 'http://localhost:8000/api/v1'
 }
 
 const baseURL =
