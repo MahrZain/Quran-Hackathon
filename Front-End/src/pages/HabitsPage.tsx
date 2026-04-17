@@ -64,7 +64,7 @@ export function HabitsPage() {
       void fetchStreakActivitiesDeduped(sessionId, 200)
         .then((rows) => setActivities(rows))
         .catch(() => {
-          setErr('Could not load mark-complete history. Is the ASAR Engine running?')
+          setErr('Could not load reading history. Please try again.')
           setActivities([])
         })
         .finally(() => setLoading(false))
@@ -255,7 +255,7 @@ export function HabitsPage() {
                 </span>
               </div>
               <p className="font-headline mb-1 text-4xl text-secondary-fixed sm:text-5xl">{streakCount}</p>
-              <p className="text-sm opacity-80">From dashboard / engine streak snapshot (same as home).</p>
+              <p className="text-sm opacity-80">Tracked via your daily reading progress.</p>
             </div>
           </div>
         </div>
@@ -325,8 +325,7 @@ export function HabitsPage() {
       </div>
 
       <p className="mt-10 text-center text-sm text-on-surface-variant/55">
-        Data from <span className="font-medium text-on-surface/70">GET /streak/…/activities</span>. Ledger day:{' '}
-        <span className="font-medium text-on-surface/70">{ledgerTz}</span>.{' '}
+        Ledger timezone: <span className="font-medium text-on-surface/70">{ledgerTz}</span>.{' '}
         <Link to="/" className="text-secondary hover:underline">
           Back to dashboard
         </Link>

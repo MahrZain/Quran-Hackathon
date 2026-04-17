@@ -7,7 +7,7 @@ import { isAxiosError } from 'axios'
 export function apiErrorMessage(err: unknown, fallback = 'Something went wrong.'): string {
   if (isAxiosError(err)) {
     if (!err.response) {
-      return 'Cannot reach the API. Start the backend in a terminal: cd Back-End && ./venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000. If you use another port, set VITE_API_BASE_URL in Front-End/.env (e.g. http://localhost:8001/api/v1).'
+      return 'Server is unreachable. Please check your internet connection and try again.'
     }
     const data = err.response.data as { detail?: unknown } | undefined
     const det = data?.detail

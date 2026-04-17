@@ -305,10 +305,22 @@ def _extract_bookmark_remote_id(data: Any) -> str | None:
 
 
 def _bookmark_create_payload(verse_key: str, settings: Settings) -> dict[str, Any]:
-    """Body for POST /auth/v1/bookmarks (camelCase per User API examples)."""
+    """Body for POST /auth/v1/bookmarks (v1 schema per Quran Foundation docs)."""
     vk = (verse_key or "").strip()
+    parts = vk.split(":")
+    if len(parts) != 2:
+        raise ValueError(f"Invalid verse_key format for bookmark: {verse_key}")
+    
+    surah_id = int(parts[0])
+    ayah_number = int(parts[1])
     mid = int(settings.quran_activity_mushaf_id)
-    return {"verseKey": vk, "mushafId": mid}
+    
+    return {
+        "type": "ayah",
+        "key": surah_id,
+        "verseNumber": ayah_number,
+        "mushaf": mid
+    }
 
 
 async def create_bookmark_on_quran_foundation(

@@ -163,7 +163,7 @@ export function ChatPage() {
           ...prev,
           {
             role: 'assistant',
-            text: apiErrorMessage(e, 'Could not reach ASAR Engine. Start the API and try again.'),
+            text: apiErrorMessage(e, 'Could not connect to the server. Please try again later.'),
           },
         ])
       } finally {
@@ -218,8 +218,7 @@ export function ChatPage() {
             <div className="min-w-0 flex-1">
               <h1 className="font-serif text-xl font-semibold text-primary sm:text-2xl">Quran companion</h1>
               <p className="mt-1.5 text-xs leading-snug text-on-surface/65 sm:text-sm">
-                Grounded verses when the API finds them; streak unchanged.{' '}
-                <strong className="font-medium text-on-surface/80">Focus mode</strong> is read-only—chat here only.
+                Discuss themes, lookup verses, and deepen your understanding of the Quran.
               </p>
               <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                 <label className="flex min-w-0 flex-1 flex-col gap-0.5 sm:max-w-[11rem]">

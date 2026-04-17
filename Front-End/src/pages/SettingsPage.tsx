@@ -147,7 +147,7 @@ export function SettingsPage() {
         <Toggle
           id="notes"
           label="Ayah notes cloud sync"
-          description="Placeholder—connect storage when backend exists."
+          description="Securely sync your bookmarks and notes using your account."
           checked={ayahNotes}
           onChange={setAyahNotes}
         />

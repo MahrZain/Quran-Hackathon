@@ -51,7 +51,7 @@ export function ReaderPage() {
       .catch(() => {
         if (!cancelled) {
           setChapterMeta(null)
-          setChapterErr('Could not load surah title from the API.')
+          setChapterErr('Could not load surah title.')
         }
       })
     return () => {
@@ -93,7 +93,7 @@ export function ReaderPage() {
       })
       .catch(() => {
         if (!cancelled) {
-          setErr('Could not load this āyah. Check that the ASAR Engine is running and Quran API settings are valid.')
+          setErr('Could not load this āyah. Please check your connection and try again.')
         }
       })
       .finally(() => {
@@ -215,8 +215,7 @@ export function ReaderPage() {
         ) : (
           <div className="space-y-2 text-sm text-on-surface/70">
             <p>
-              No text returned for <strong>{verseKey}</strong>. The verse endpoint responded but Uthmani /
-              translation fields were empty (often a Quran API / OAuth issue).
+              translation fields were empty.
             </p>
             <p className="text-xs text-on-surface/55">
               Tip: use <code className="text-on-surface/60">?ayah=</code> in the URL to open a specific āyah, e.g.{' '}

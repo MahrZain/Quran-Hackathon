@@ -22,3 +22,5 @@ Front-End/.env.*
 !Front-End/.env.production.example
 ASAR_Technical_Documentation.docx
 DOCUMENTATION.md
+docx_text.txt
+USER_GUIDE.md

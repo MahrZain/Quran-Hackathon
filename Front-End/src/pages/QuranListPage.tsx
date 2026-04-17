@@ -88,7 +88,7 @@ export function QuranListPage() {
       <header className="mb-8">
         <h1 className="font-serif text-3xl font-semibold text-primary">Quran progress</h1>
         <p className="mt-2 text-sm text-on-surface/70">
-          All 114 surahs from the ASAR Engine (Quran.com-compatible API). Search by name, Arabic, or surah number.
+          All 114 surahs. Search by name, Arabic, or surah number.
         </p>
         {listErr && <p className="mt-2 text-xs text-error">{listErr}</p>}
         {resume && resume.surah >= 1 && resume.surah <= 114 ? (

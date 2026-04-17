@@ -32,7 +32,7 @@ export function FocusPage() {
       })
       .catch(() => {
         if (!cancelled) {
-          setErr('Could not load this verse from the API. Check the ASAR Engine and Quran OAuth in Back-End/.env.')
+          setErr('Could not load this verse. Please check your connection and try again.')
         }
       })
       .finally(() => {

@@ -133,7 +133,7 @@ export function DashboardPage() {
         streakHintTimerRef.current = null
       }, 6000)
     } catch {
-      setMarkError('Could not log streak. Is the ASAR Engine running on port 8000?')
+      setMarkError('Could not sync your reading progress. Please try again.')
     } finally {
       setMarkLoading(false)
     }
@@ -159,7 +159,7 @@ export function DashboardPage() {
       }
       await refreshUser()
     } catch {
-      setMarkError('Could not restart reading. Is the ASAR Engine running?')
+      setMarkError('Could not restart reading. Please try again.')
     } finally {
       setRestartLoading(false)
     }

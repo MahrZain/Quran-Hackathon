@@ -295,7 +295,7 @@ export function DailyAyahBlock({ ayah, className = '' }: DailyAyahBlockProps) {
                 })
                 setAudioBusy(false)
                 if (result === 'no_url') {
-                  setPlayErr('No audio URL for this verse. Is the ASAR API running?')
+                  setPlayErr('Audio is not available for this verse right now.')
                 } else if (result === 'blocked') {
                   setPlayErr('Playback was blocked — try tapping Play again, or check the browser audio permission.')
                 }
