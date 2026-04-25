@@ -1,3 +1,4 @@
+import '@khmyznikov/pwa-install'
 import { LazyMotion, domAnimation } from 'framer-motion'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { OnboardingGate, RedirectIfAuthed, RequireAppAccess } from './components/AuthRouteGuards'
@@ -59,6 +60,12 @@ export function App() {
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    <pwa-install
+      name="ASAR Sanctuary"
+      description="The Digital Sanctuary — Quran reading, reflection, and companion chat."
+      icon="/icon-192.svg"
+      manifest-url="/manifest.json"
+    ></pwa-install>
     </div>
     </LazyMotion>
   )
