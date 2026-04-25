@@ -119,9 +119,9 @@ flowchart LR
   FastAPI --> LongCat
 ```
 
-The browser loads the Vite-built React SPA. During development, API calls are proxied through Vite to the FastAPI engine. 
-- **[Front-End/src/pages/SupportPage.tsx](Front-End/src/pages/SupportPage.tsx)** — Premium support hub with integrated email ([Hackathon@quran.com](mailto:Hackathon@quran.com)) and Discord community link ([https://discord.gg/SpEeJ5bWEQ](https://discord.gg/SpEeJ5bWEQ)).
-The engine persists state in SQLite, fetches Quranic content from the Quran.com API, syncs user data with the Quran Foundation, and generates AI responses via a LongCat (OpenAI-compatible) LLM endpoint.
+The browser loads the Vite-built React SPA. During development, API calls are proxied through Vite to the FastAPI engine. The engine persists state in SQLite, fetches Quranic content from the Quran.com API, syncs user data with the Quran Foundation, and generates AI responses via a LongCat (OpenAI-compatible) LLM endpoint.
+
+For community help and feedback, we maintain a **[Support Hub](Front-End/src/pages/SupportPage.tsx)** with integrated email ([Hackathon@quran.com](mailto:Hackathon@quran.com)) and a [Discord Community](https://discord.gg/SpEeJ5bWEQ).
 
 ---
 

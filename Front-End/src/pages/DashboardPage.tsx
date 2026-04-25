@@ -11,6 +11,7 @@ import type { StreakResponse, UserMe } from '../lib/apiTypes'
 import { asarE2eTrace } from '../lib/asarE2eTrace'
 import { dailyAyahFromVerseKey, fillSurahMeta, getDailyAyahFromTopicTag } from '../lib/mockData'
 import { constellationDaysFromStreak } from '../lib/streakHelpers'
+import { NotificationService } from '../lib/notificationService'
 
 const heroImg =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuDch2veucQKJt15pxGsoQodLhP-T_WKzVTPt0DM2Qc6zRU0fyQ1zjEeFD746Wyz3TtWE84yNaXYRLpFW4V0Q62ZKsHxNvfiMFfIQCHNvTRmyEjJuV47fAbOQk1HpBQYB654QbinS7Z6l733ybyiuBCoB861cYDkCM14WVnkKLdPtOfFwiYvNhVQHWpJ_4i2pTXy01G0qckvhP9v-BfETEqO62mGPCtiRt4KjQFf86ORT4eev4-jyaEVnucwajJiGFo80eSAr8qA93I'
@@ -73,6 +74,13 @@ export function DashboardPage() {
   useEffect(() => {
     setConstellationDays(constellationDaysFromStreak(streakCount))
   }, [streakCount])
+
+  useEffect(() => {
+    // Only notify if user is logged in and today is 0
+    if (user && ayahsMarkedToday === 0) {
+      void NotificationService.checkAndNotify(ayahsMarkedToday)
+    }
+  }, [user, ayahsMarkedToday])
 
   useEffect(() => {
     return () => {

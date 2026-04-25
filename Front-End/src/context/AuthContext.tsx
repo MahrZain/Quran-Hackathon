@@ -15,6 +15,7 @@ import { wipeAsarSessionScopeFromBrowser } from '../lib/cleanSlate'
 import { asarE2eTrace } from '../lib/asarE2eTrace'
 import type { TokenResponse, UserMe } from '../lib/apiTypes'
 import { clearAccessToken, setAccessToken, getAccessToken } from '../lib/authStorage'
+import { NotificationService } from '../lib/notificationService'
 
 type AuthContextValue = {
   user: UserMe | null
@@ -165,6 +166,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       expires_in: data.expires_in,
       session_id: sessionId,
     })
+    void NotificationService.requestPermission()
   }, [refreshUser])
 
   const logout = useCallback(() => {
