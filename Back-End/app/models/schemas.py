@@ -201,3 +201,14 @@ class BookmarkOut(BaseModel):
     quran_sync_status: Literal["pending", "synced", "failed"] = "pending"
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class InsightCard(BaseModel):
+    kind: str
+    title: str
+    body: str
+
+
+class InsightsResponse(BaseModel):
+    subtitle: str
+    cards: list[InsightCard]

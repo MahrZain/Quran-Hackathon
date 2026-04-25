@@ -17,6 +17,7 @@ from app.models.schemas import (
     ChatRequest,
     ChatResponse,
     ChatVerseCard,
+    InsightsResponse,
 )
 from app.services import ai_service, chat_rag_rest
 from app.services.streak_logic import compute_streak_count
@@ -113,3 +114,20 @@ async def chat_message(
         len(verses),
     )
     return ChatMessageResponse(answer=answer, verses=verses)
+
+
+@router.get("/chat/insights", response_model=InsightsResponse)
+async def get_insights(
+    session_id: str | None = None,
+    db: Session = Depends(get_db),
+    user: User | None = Depends(get_current_user_optional),
+) -> InsightsResponse:
+    sid = effective_session_id(db, user, session_id)
+    ensure_session(db, sid)
+
+    try:
+        data = await ai_service.generate_session_insights(sid, db)
+        return InsightsResponse(**data)
+    except Exception as e:
+        log.error("Failed to generate insights for session %s: %s", sid, e)
+        raise HTTPException(status_code=500, detail="Failed to generate insights")

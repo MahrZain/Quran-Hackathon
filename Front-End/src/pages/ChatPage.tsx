@@ -210,10 +210,10 @@ export function ChatPage() {
   }, [clearing, hydrating, refreshSessionChatStats, sending, sessionId])
 
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full max-w-2xl flex-1 flex-col px-3 sm:px-4">
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-1 flex-col px-0 sm:px-4">
       {/* Single card: everything inside the box; only the thread scrolls */}
-      <div className="flex min-h-0 max-h-full flex-1 flex-col overflow-hidden rounded-bento border border-outline-variant/25 bg-surface-container-low shadow-ambient">
-        <header className="shrink-0 border-b border-outline-variant/15 px-4 pb-3 pt-4 sm:px-5 sm:pt-5">
+      <div className="flex min-h-0 max-h-full flex-1 flex-col overflow-hidden bg-surface-container-low shadow-ambient sm:rounded-bento sm:border sm:border-outline-variant/25">
+        <header className="shrink-0 border-b border-outline-variant/15 px-4 pb-3 pt-4 sm:px-6 sm:pt-6">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <h1 className="font-serif text-xl font-semibold text-primary sm:text-2xl">Quran companion</h1>

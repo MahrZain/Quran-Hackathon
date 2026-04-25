@@ -148,3 +148,14 @@ export type ChapterSummary = {
   verses: number
   revelation: string
 }
+
+export type InsightCard = {
+  kind: string
+  title: string
+  body: string
+}
+
+export type InsightsResponse = {
+  subtitle: string
+  cards: InsightCard[]
+}

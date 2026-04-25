@@ -349,3 +349,74 @@ async def generate_verified_chat_turn(session_id: str, user_message: str, db: Se
         verse_translation=trans or "",
         audio_url=audio,
     )
+
+async def generate_session_insights(session_id: str, db: Session) -> dict:
+    """
+    Analyzes session history and generates 3 distinct spiritual insights using LongCat.
+    Returns a dict compatible with InsightsResponse.
+    """
+    settings = get_settings()
+    if not settings.longcat_api_key:
+        raise ValueError("LONGCAT_API_KEY is not configured")
+
+    history = _last_messages_for_prompt(db, session_id, 30)
+    user_msgs = [m.content for m in history if m.role == MessageRole.user]
+    
+    if not user_msgs:
+        return {
+            "subtitle": "Share more with the Book to unlock deeper reflections.",
+            "cards": [
+                {
+                    "kind": "themes",
+                    "title": "Begin your journey",
+                    "body": "Your thematic echo will appear here as we reflect together on the Quran."
+                },
+                {
+                    "kind": "rhythm",
+                    "title": "Steady pace",
+                    "body": "Maintaining a daily connection creates a rhythm of peace in the heart."
+                },
+                {
+                    "kind": "prompt",
+                    "title": "A first step",
+                    "body": "Try asking about a theme like 'patience' or 'gratitude' in the companion."
+                }
+            ]
+        }
+
+    history_text = "\n".join([f"{'User' if m.role == MessageRole.user else 'AI'}: {m.content}" for m in history])
+    
+    system = (
+        "You are an insightful spiritual analyst for the ASAR Quranic app. "
+        "Analyze the provided session history and generate 3 distinct insights in JSON format.\n"
+        "1. 'themes': A 'Thematic echo' summarizing the core emotional or spiritual topic the user is exploring.\n"
+        "2. 'rhythm': A 'Session rhythm' reflecting on their engagement style or a spiritual habit advice.\n"
+        "3. 'prompt': A 'Gentle prompt' suggesting a specific question or surah they might want to explore next based on their context.\n"
+        "Output MUST be a JSON object with keys: 'subtitle' (a brief summary line) and 'cards' (list of 3 objects with 'kind', 'title', 'body')."
+    )
+
+    client = _client_or_raise()
+    try:
+        completion = await client.chat.completions.create(
+            model=settings.longcat_model,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": f"History:\n{history_text}"}
+            ],
+            temperature=0.4,
+            response_format={"type": "json_object"}
+        )
+        import json
+        content = completion.choices[0].message.content
+        return json.loads(content)
+    except Exception as e:
+        log.exception("LongCat insights generation failed: %s", e)
+        # Fallback to deterministic if LLM fails
+        return {
+            "subtitle": "Spiritual signals captured from your recent reflections.",
+            "cards": [
+                {"kind": "themes", "title": "Thematic echo", "body": "You are exploring the depths of the Book."},
+                {"kind": "rhythm", "title": "Session rhythm", "body": "Your heart is finding its pace."},
+                {"kind": "prompt", "title": "Gentle prompt", "body": "Consider reflecting on Surah Al-Fatiha."}
+            ]
+        }
