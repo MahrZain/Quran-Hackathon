@@ -86,7 +86,7 @@ export function InsightsPage() {
           <p className="text-sm font-medium text-on-surface/40">Calibrating insights…</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-6 auto-rows-[minmax(160px,auto)] md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-6 auto-rows-[minmax(160px,auto)] sm:grid-cols-2 md:grid-cols-3">
           {cards.map((card, idx) => {
             const Icon = iconFor(card.kind)
             const isHero = card.kind === 'themes' || (idx === 0 && cards.length === 1)
@@ -96,7 +96,7 @@ export function InsightsPage() {
                 key={`${card.kind}-${idx}`} 
                 className={`
                   group relative flex flex-col overflow-hidden p-6 transition-all duration-500 ease-out hover:translate-y-[-4px] sm:p-8
-                  ${isHero ? 'md:col-span-2 md:row-span-2 bg-surface-container-lowest' : 'bg-surface-container-low/50 border-none shadow-none'}
+                  ${isHero ? 'sm:col-span-2 md:row-span-2 bg-surface-container-lowest' : 'bg-surface-container-low/50 border-none shadow-none'}
                 `}
               >
                 {/* Decorative background flourish for Hero */}
@@ -114,13 +114,13 @@ export function InsightsPage() {
                 <div className="relative z-10">
                   <h2 className={`
                     mb-3 font-serif font-semibold text-on-surface
-                    ${isHero ? 'text-2xl sm:text-3xl' : 'text-xl'}
+                    ${isHero ? 'text-2xl sm:text-3xl lg:text-4xl' : 'text-xl sm:text-2xl'}
                   `}>
                     {card.title}
                   </h2>
                   <p className={`
                     leading-relaxed text-on-surface/70
-                    ${isHero ? 'text-base sm:text-lg' : 'text-sm'}
+                    ${isHero ? 'text-base sm:text-lg lg:text-xl' : 'text-sm sm:text-base'}
                   `}>
                     {card.body}
                   </p>
@@ -139,7 +139,7 @@ export function InsightsPage() {
 
           {/* Fallback card if fewer than 3 insights to maintain bento feel */}
           {cards.length < 3 && cards.length > 0 && (
-            <div className="flex flex-col items-center justify-center rounded-bento border-2 border-dashed border-primary/5 p-8 text-center opacity-40 md:col-span-1">
+            <div className="flex flex-col items-center justify-center rounded-bento border-2 border-dashed border-primary/5 p-8 text-center opacity-40 sm:col-span-1">
               <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-primary/5">
                 <Sparkles className="h-5 w-5 text-primary/30" />
               </div>
