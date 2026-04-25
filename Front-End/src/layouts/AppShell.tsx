@@ -169,7 +169,7 @@ function AppShellInner() {
           key={location.pathname}
           className={`min-h-0 flex-1 bg-surface lg:ml-64 ${
             chatLayout
-              ? 'flex flex-col overflow-hidden p-2 pb-24 sm:p-4 sm:pb-28 lg:pb-8'
+              ? 'flex flex-col overflow-hidden p-0 sm:p-4 lg:pb-8'
               : 'overflow-y-auto overflow-x-hidden p-4 pb-24 sm:p-8 lg:pb-8'
           }`}
           initial={{ opacity: 0 }}
@@ -206,15 +206,17 @@ function AppShellInner() {
           <Icon name="potted_plant" />
           <span className="text-[10px] font-bold uppercase">Dhikr</span>
         </NavLink>
-        <div className="relative -top-8">
-          <NavLink
-            to="/chat"
-            className="flex rounded-full bg-primary p-4 text-on-primary shadow-2xl shadow-primary/40 ring-8 ring-surface"
-            aria-label="Open Quran companion"
-          >
-            <span className="material-symbols-outlined text-3xl">add</span>
-          </NavLink>
-        </div>
+        {!chatLayout && (
+          <div className="relative -top-8">
+            <NavLink
+              to="/chat"
+              className="flex rounded-full bg-primary p-4 text-on-primary shadow-2xl shadow-primary/40 ring-8 ring-surface transition-transform hover:scale-110 active:scale-95"
+              aria-label="Open Quran companion"
+            >
+              <span className="material-symbols-outlined text-3xl">add</span>
+            </NavLink>
+          </div>
+        )}
         <NavLink
           to="/quran"
           className={({ isActive }) =>

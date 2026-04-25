@@ -1,4 +1,4 @@
-import { Send, Share2, Trash2 } from 'lucide-react'
+import { Send, Share2, Trash2, Settings2, ChevronDown, ChevronUp } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ChatThinkingIndicator } from '../components/ChatThinkingIndicator'
@@ -91,6 +91,7 @@ export function ChatPage() {
   const [verseTranslation, setVerseTranslation] = useState<ChatVerseTranslationValue>(() =>
     loadChatVerseTranslation(),
   )
+  const [showSettings, setShowSettings] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
   /** React Router location key — survives Strict Mode remounts so we only auto-send once per navigation. */
   const initialHandledKeyRef = useRef<string | null>(null)
@@ -213,23 +214,35 @@ export function ChatPage() {
     <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-1 flex-col px-0 sm:px-4">
       {/* Single card: everything inside the box; only the thread scrolls */}
       <div className="flex min-h-0 max-h-full flex-1 flex-col overflow-hidden bg-surface-container-low shadow-ambient sm:rounded-bento sm:border sm:border-outline-variant/25">
-        <header className="shrink-0 border-b border-outline-variant/15 px-4 pb-3 pt-4 sm:px-6 sm:pt-6">
+        <header className="shrink-0 border-b border-outline-variant/15 px-4 pb-2 pt-3 sm:px-6 sm:pb-3 sm:pt-6">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <h1 className="font-serif text-xl font-semibold text-primary sm:text-2xl">Quran companion</h1>
-              <p className="mt-1.5 text-xs leading-snug text-on-surface/65 sm:text-sm">
+              <div className="flex items-center justify-between">
+                <h1 className="font-serif text-lg font-semibold text-primary sm:text-2xl">Quran companion</h1>
+                <button
+                  type="button"
+                  onClick={() => setShowSettings(!showSettings)}
+                  className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-bold text-primary sm:hidden"
+                >
+                  <Settings2 className="h-3.5 w-3.5" />
+                  {showSettings ? 'Hide Settings' : 'Settings'}
+                  {showSettings ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                </button>
+              </div>
+              <p className="mt-1 text-[10px] leading-tight text-on-surface/65 sm:mt-1.5 sm:text-sm">
                 Discuss themes, lookup verses, and deepen your understanding of the Quran.
               </p>
-              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-                <label className="flex min-w-0 flex-1 flex-col gap-0.5 sm:max-w-[11rem]">
-                  <span className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant/80">
+              
+              <div className={`${showSettings ? 'flex' : 'hidden'} mt-3 flex-col gap-3 sm:flex sm:flex-row sm:flex-wrap sm:items-center`}>
+                <label className="flex min-w-0 flex-1 flex-col gap-1 sm:max-w-[11rem]">
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant/80">
                     Reply language
                   </span>
                   <select
                     value={replyLanguage}
                     onChange={(e) => setReplyLanguage(e.target.value as ChatReplyLanguageValue)}
                     disabled={sending || hydrating}
-                    className="rounded-lg border border-outline-variant/25 bg-surface-container-highest/60 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary-fixed-dim"
+                    className="rounded-xl border border-outline-variant/25 bg-surface-container-highest/60 px-3 py-2 text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20"
                   >
                     {CHAT_REPLY_LANGUAGE_OPTIONS.map((o) => (
                       <option key={o.value} value={o.value}>
@@ -238,15 +251,15 @@ export function ChatPage() {
                     ))}
                   </select>
                 </label>
-                <label className="flex min-w-0 flex-1 flex-col gap-0.5 sm:max-w-[14rem]">
-                  <span className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant/80">
+                <label className="flex min-w-0 flex-1 flex-col gap-1 sm:max-w-[14rem]">
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant/80">
                     Verse translation
                   </span>
                   <select
                     value={verseTranslation}
                     onChange={(e) => setVerseTranslation(e.target.value as ChatVerseTranslationValue)}
                     disabled={sending || hydrating}
-                    className="rounded-lg border border-outline-variant/25 bg-surface-container-highest/60 px-2 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary-fixed-dim"
+                    className="rounded-xl border border-outline-variant/25 bg-surface-container-highest/60 px-3 py-2 text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20"
                   >
                     {CHAT_VERSE_TRANSLATION_OPTIONS.map((o) => (
                       <option key={o.value} value={o.value}>
@@ -261,13 +274,13 @@ export function ChatPage() {
               <Button
                 type="button"
                 variant="ghost"
-                className="shrink-0 gap-1.5 px-3 py-2 text-xs text-on-surface-variant hover:text-primary"
+                className="shrink-0 gap-1.5 p-2 text-xs text-on-surface-variant hover:text-error sm:px-3 sm:py-2"
                 disabled={sending || clearing}
                 onClick={() => void clearChat()}
                 title="Remove all messages in this thread"
                 aria-label="Clear chat"
               >
-                <Trash2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                <Trash2 className="h-4 w-4 shrink-0 sm:h-3.5 sm:w-3.5" aria-hidden />
                 <span className="hidden sm:inline">Clear chat</span>
               </Button>
             ) : null}

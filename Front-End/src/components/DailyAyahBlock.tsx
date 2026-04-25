@@ -1,5 +1,6 @@
-import { ArrowRight, Share2 } from 'lucide-react'
-import { useState } from 'react'
+import { ArrowRight, Share2, Search, ChevronDown, Check, X } from 'lucide-react'
+import { useState, useMemo, useRef, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import { useMoodAyah, type VerseEnrichmentStatus } from '../context/MoodAyahContext'
 import type { TranslationResourceOut } from '../lib/apiTypes'
@@ -114,10 +115,36 @@ export function DailyAyahBlock({ ayah, className = '' }: DailyAyahBlockProps) {
   const [textMode, setTextMode] = useState<TextMode>('arabic')
   const [audioBusy, setAudioBusy] = useState(false)
   const [playErr, setPlayErr] = useState<string | null>(null)
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false)
+      }
+    }
+    if (isDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isDropdownOpen])
 
   const meta = fillSurahMeta(ayah)
   const ref = `${meta.surahName} · ${meta.surahId}:${meta.ayahNumber}`
-  const groupedTranslations = groupTranslationsByLanguage(translationResources)
+  
+  const filteredResources = useMemo(() => {
+    if (!searchQuery.trim()) return translationResources
+    const q = searchQuery.toLowerCase()
+    return translationResources.filter(r => 
+      r.name.toLowerCase().includes(q) || 
+      r.language_name.toLowerCase().includes(q) ||
+      (r.author_name?.toLowerCase() || '').includes(q)
+    )
+  }, [translationResources, searchQuery])
+
+  const groupedTranslations = useMemo(() => groupTranslationsByLanguage(filteredResources), [filteredResources])
   const selectedTranslationMeta = translationResources.find((r) => r.id === dashboardTranslationResourceId)
   const translationLang = selectedTranslationMeta
     ? translationParagraphLang(selectedTranslationMeta.language_name)
@@ -164,39 +191,113 @@ export function DailyAyahBlock({ ayah, className = '' }: DailyAyahBlockProps) {
               Translation
             </button>
           </div>
-          <div className="w-full min-w-0">
-            <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-bold uppercase tracking-wide text-on-surface-variant/80">
-                Translation edition
+          <div className="relative w-full min-w-0" ref={dropdownRef}>
+            <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/80">
+              Translation edition
+            </span>
+            
+            <button
+              type="button"
+              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+              disabled={translationsCatalogLoading}
+              className="flex w-full items-center justify-between gap-3 rounded-xl border border-outline-variant/25 bg-surface-container-highest/60 px-4 py-2.5 text-left text-xs text-on-surface shadow-sm transition hover:bg-surface-container-highest focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
+            >
+              <span className="truncate font-medium">
+                {selectedTranslationMeta ? (
+                  <>{selectedTranslationMeta.name} <span className="opacity-60">({selectedTranslationMeta.language_name})</span></>
+                ) : (
+                  'Default (App)'
+                )}
               </span>
-              <select
-                value={dashboardTranslationResourceId ?? ''}
-                onChange={(e) => {
-                  const raw = e.target.value
-                  if (raw === '') {
-                    setDashboardTranslationResourceId(null)
-                    return
-                  }
-                  const n = parseInt(raw, 10)
-                  setDashboardTranslationResourceId(Number.isFinite(n) && n >= 1 ? n : null)
-                }}
-                disabled={translationsCatalogLoading}
-                className="w-full rounded-xl border border-outline-variant/25 bg-surface-container-highest/60 px-3 py-2 text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary-fixed-dim disabled:opacity-60"
-                aria-busy={translationsCatalogLoading}
-              >
-                <option value="">Default (app)</option>
-                {[...groupedTranslations.entries()].map(([langLabel, rows]) => (
-                  <optgroup key={langLabel} label={langLabel}>
-                    {rows.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.name}
-                        {r.author_name ? ` — ${r.author_name}` : ''}
-                      </option>
+              <ChevronDown className={`h-4 w-4 shrink-0 opacity-50 transition-transform duration-300 ${isDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            <AnimatePresence>
+              {isDropdownOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                  transition={{ duration: 0.2, ease: 'easeOut' }}
+                  className="absolute right-0 top-full z-[100] mt-2 flex w-full flex-col overflow-hidden rounded-2xl bg-surface-container-lowest shadow-ambient ring-1 ring-black/5 sm:w-[28rem]"
+                >
+                  <div className="sticky top-0 z-10 border-b border-outline-variant/10 bg-surface-container-lowest/90 px-4 py-3 backdrop-blur-sm">
+                    <div className="relative flex items-center">
+                      <Search className="absolute left-3 h-3.5 w-3.5 opacity-40" />
+                      <input
+                        autoFocus
+                        type="text"
+                        placeholder="Search translations…"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full rounded-lg bg-surface-container-low px-9 py-2 text-xs text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary/10"
+                      />
+                      {searchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setSearchQuery('')}
+                          className="absolute right-3 rounded-full p-0.5 hover:bg-surface-container-high"
+                        >
+                          <X className="h-3 w-3 opacity-50" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="max-h-80 overflow-y-auto overscroll-contain py-2 custom-scrollbar">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDashboardTranslationResourceId(null)
+                        setIsDropdownOpen(false)
+                      }}
+                      className={`flex w-full items-center justify-between px-4 py-2.5 text-left text-xs transition hover:bg-primary/5 ${
+                        dashboardTranslationResourceId === null ? 'bg-primary/10 text-primary font-bold' : 'text-on-surface'
+                      }`}
+                    >
+                      <span>Default (App Selection)</span>
+                      {dashboardTranslationResourceId === null && <Check className="h-3.5 w-3.5" />}
+                    </button>
+
+                    {[...groupedTranslations.entries()].map(([langLabel, rows]) => (
+                      <div key={langLabel}>
+                        <div className="bg-surface-container-low/50 px-4 py-1.5 text-[9px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+                          {langLabel}
+                        </div>
+                        {rows.map((r) => (
+                          <button
+                            key={r.id}
+                            type="button"
+                            onClick={() => {
+                              setDashboardTranslationResourceId(r.id)
+                              setIsDropdownOpen(false)
+                            }}
+                            className={`flex w-full items-center justify-between px-4 py-2.5 text-left text-xs transition hover:bg-primary/5 ${
+                              dashboardTranslationResourceId === r.id ? 'bg-primary/10 text-primary font-bold' : 'text-on-surface'
+                            }`}
+                          >
+                            <div className="min-w-0 pr-4">
+                              <div className="truncate">{r.name}</div>
+                              {r.author_name && (
+                                <div className="truncate text-[10px] opacity-60 font-normal">{r.author_name}</div>
+                              )}
+                            </div>
+                            {dashboardTranslationResourceId === r.id && <Check className="h-3.5 w-3.5 shrink-0" />}
+                          </button>
+                        ))}
+                      </div>
                     ))}
-                  </optgroup>
-                ))}
-              </select>
-            </label>
+                    
+                    {[...groupedTranslations.entries()].length === 0 && (
+                      <div className="px-4 py-8 text-center text-xs text-on-surface-variant/60">
+                        No translations found matching your search.
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            
             {translationsCatalogError ? (
               <p className="mt-1 text-[10px] text-error">Could not load translation list. Using default only.</p>
             ) : null}
