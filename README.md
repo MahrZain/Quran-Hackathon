@@ -22,6 +22,8 @@
 
 **ASAR Sanctuary** is a full-stack Quran reading and reflection companion that combines a modern React SPA with a robust FastAPI backend. It provides an immersive, distraction-free reading experience enhanced by AI-powered verse exploration, daily habit tracking with visual streak constellations, cloud-synced bookmarks, and a verified RAG-based chat companion — all grounded strictly in authentic Quranic text.
 
+**Support**: Need help? Visit the Support page, join our [Discord Community](https://discord.gg/SpEeJ5bWEQ), or email us at [Hackathon@quran.com](mailto:Hackathon@quran.com).
+
 The name **ASAR** reflects the app's mission: leaving a lasting *trace* (Arabic: أثر) in your daily Quran reading journey. Whether you are a beginner setting a 5-minute daily goal or a seasoned reader completing the entire Mushaf, ASAR adapts to your pace and keeps you consistent.
 
 ---
@@ -52,6 +54,8 @@ flowchart TD
 
 | Principle | Implementation in ASAR |
 |-----------|----------------------|
+| **Support Email** | [Hackathon@quran.com](mailto:Hackathon@quran.com) | Official channel for sanctuary assistance |
+| **Community** | [Join Discord](https://discord.gg/SpEeJ5bWEQ) | Connect with fellow travelers and share reflections |
 | **Make it Tiny** | Instead of a chapter or a page, the dashboard surfaces **one single ayah** — readable in under 60 seconds. The barrier to entry is essentially zero. |
 | **Make it Visual** | The **Streak Constellation** and **Flow Ring** turn abstract consistency into tangible, growing visual rewards. Each day you complete adds a new star to your constellation — a pattern the brain instinctively wants to continue. |
 | **Make it Immediate** | **One-tap mark-complete** — no navigation, no menus, no friction. See the verse, read it, tap done. The entire loop takes less than a minute. |
@@ -115,7 +119,9 @@ flowchart LR
   FastAPI --> LongCat
 ```
 
-The browser loads the Vite-built React SPA. During development, API calls are proxied through Vite to the FastAPI engine. The engine persists state in SQLite, fetches Quranic content from the Quran.com API, syncs user data with the Quran Foundation, and generates AI responses via a LongCat (OpenAI-compatible) LLM endpoint.
+The browser loads the Vite-built React SPA. During development, API calls are proxied through Vite to the FastAPI engine. 
+- **[Front-End/src/pages/SupportPage.tsx](Front-End/src/pages/SupportPage.tsx)** — Premium support hub with integrated email ([Hackathon@quran.com](mailto:Hackathon@quran.com)) and Discord community link ([https://discord.gg/SpEeJ5bWEQ](https://discord.gg/SpEeJ5bWEQ)).
+The engine persists state in SQLite, fetches Quranic content from the Quran.com API, syncs user data with the Quran Foundation, and generates AI responses via a LongCat (OpenAI-compatible) LLM endpoint.
 
 ---
 

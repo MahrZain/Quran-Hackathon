@@ -169,7 +169,7 @@ function AppShellInner() {
           key={location.pathname}
           className={`min-h-0 flex-1 bg-surface lg:ml-64 ${
             chatLayout
-              ? 'flex flex-col overflow-hidden p-0 sm:p-4 lg:pb-8'
+              ? 'flex flex-col overflow-hidden p-0 pb-20 sm:p-4 sm:pb-28 lg:pb-8'
               : 'overflow-y-auto overflow-x-hidden p-4 pb-24 sm:p-8 lg:pb-8'
           }`}
           initial={{ opacity: 0 }}

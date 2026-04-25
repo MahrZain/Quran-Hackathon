@@ -440,9 +440,6 @@ export function DailyAyahBlock({ ayah, className = '' }: DailyAyahBlockProps) {
             <ArrowRight className="h-4 w-4 opacity-70" aria-hidden />
           </Link>
         </div>
-        <p className="text-[10px] leading-snug text-on-surface-variant/75">
-          Opens the insights page (session themes, streak rhythm, verse prompt)—not an on-card timer.
-        </p>
         </div>
       </div>
     </div>
