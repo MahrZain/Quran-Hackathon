@@ -52,7 +52,7 @@ export function DashboardPage() {
   const flowPercent = Math.min(
     100,
     Math.round(
-      (streakCount === 0 ? 0 : Math.min(55, 10 + streakCount * 9)) + Math.min(55, ayahsMarkedToday * 14),
+      (streakCount === 0 ? 0 : Math.min(55, 10 + streakCount * 9)) + (ayahsMarkedToday * 14),
     ),
   )
   const engagementPoints = sessionUserMessages * 12 + streakCount * 20 + ayahsMarkedToday * 8
@@ -198,7 +198,9 @@ export function DashboardPage() {
                 ? isSingleSurahScope
                   ? 'End of this surah — tap Start again for āyah 1.'
                   : 'End of the Qur’an — tap Start again from Al-Fātiḥah.'
-                : 'Mark complete updates your streak and moves to the next āyah.'}
+                : flowPercent === 100
+                  ? 'Daily goal reached! 100% complete. Every extra āyah builds your engagement.'
+                  : 'Mark complete updates your streak and moves to the next āyah.'}
             </p>
             <div className="relative mt-8 flex h-56 w-56 shrink-0 items-center justify-center sm:mt-10 sm:h-72 sm:w-72">
               <div className="absolute inset-0 rounded-full border-[14px] border-surface-container opacity-50 sm:border-[18px]" />
