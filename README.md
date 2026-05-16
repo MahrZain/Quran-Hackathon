@@ -589,6 +589,23 @@ Please ensure all existing tests pass and add tests for new functionality.
 
 ---
 
+## Hackathon Compliance: Quran Foundation API Usage
+
+ASAR Sanctuary is built specifically for the Quran Foundation Hackathon and utilizes a comprehensive suite of official APIs:
+
+### Content API Category
+* **Quran APIs**: Surah metadata and verse retrieval for the dashboard and reader.
+* **Audio APIs**: High-quality ayah recitations integrated into the reading experience.
+* **Tafsir APIs**: Verified grounding for the AI Companion to prevent hallucinations.
+* **Translation APIs**: Support for 100+ global translations.
+
+### User API Category
+* **Bookmarks**: Full bi-directional synchronization of user bookmarks to the cloud.
+* **Activity & Goals (Streak Tracking)**: Real-time sync of daily reading activity to the **Activity Days** API.
+* **Identity**: Seamless authentication via **Quran Foundation OAuth2**.
+
+---
+
 ## Documentation
 
 | Document | Description |
