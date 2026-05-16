@@ -293,6 +293,8 @@ asar-sanctuary/
 │   └── package.json
 ├── DOCUMENTATION.md                 # Full technical documentation
 ├── USER_GUIDE.md                    # End-user guide
+├── ASAR_Business_Documentation.pdf  # Business & Strategy Documentation
+├── ASAR_Technical_Documentation.pdf # Technical Deep-Dive Documentation
 └── README.md                        # This file
 ```
 
@@ -613,6 +615,8 @@ ASAR Sanctuary is built specifically for the Quran Foundation Hackathon and util
 |----------|-------------|
 | [USER_GUIDE.md](USER_GUIDE.md) | End-user guide for the Sanctuary application |
 | [DOCUMENTATION.md](DOCUMENTATION.md) | Full technical documentation (architecture, APIs, config) |
+| [ASAR_Business_Documentation.pdf](ASAR_Business_Documentation.pdf) | Business and strategic documentation for ASAR Sanctuary |
+| [ASAR_Technical_Documentation.pdf](ASAR_Technical_Documentation.pdf) | Deep technical specifications and implementation details |
 
 ---
 
