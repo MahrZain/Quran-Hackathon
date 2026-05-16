@@ -5,6 +5,7 @@
 ### *Your Intelligent Quran Reading Companion*
 
 [![Live Demo](https://img.shields.io/badge/LIVE_DEMO-fnwholesale.pk-0A0A0A?style=for-the-badge&logo=globe&logoColor=white&labelColor=1a237e)](https://fnwholesale.pk/)
+[![GitHub](https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/MahrZain/Quran-Hackathon.git)
 
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![React](https://img.shields.io/badge/Frontend-React_18-61DAFB?style=flat-square&logo=react)](https://react.dev/)
